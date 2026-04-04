@@ -59,7 +59,7 @@ argument() {
 # Declares a named option. Multiple options can be declared.
 # The option name is derived from the first long flag (--flag → flag),
 # falling back to the short flag (-f → f).
-# --no-* flags default to true when no explicit default is provided.
+# --no-* flags strip the no- prefix from the key, default to true, and set to false when passed.
 # Initialises $program_option["name"] (and all aliases) with the default value.
 #
 # Usage: option "<flags>" "<description>" "<default>"
@@ -70,7 +70,7 @@ argument() {
 # Example:
 #   option "-n, --num <amount>" "Number of results" "10"
 #   option "--force" "Skip confirmation"
-#   option "--no-sizes" "Omit file sizes"
+#   option "--no-cheese" "Omit cheese"  → program_option["cheese"]
 option() {
 	local option_flags=$1
 	local option_description
@@ -82,9 +82,12 @@ option() {
 	local option_name
 	option_name=$(__extract_option_name "$option_flags")
 
-	# If any flag token starts with --no- the default behavior should be true
-	if [[ "$option_flags" =~ (^|,\ )--no- ]] && [ -z "$option_default_value" ]; then
-		option_default_value=true
+	# --no-* flags: strip the no- prefix from the key and default to true
+	if [[ "$option_flags" =~ (^|,\ )--no- ]]; then
+		option_name="${option_name#no-}"
+		if [ -z "$option_default_value" ]; then
+			option_default_value=true
+		fi
 	fi
 
 	program_has_options=true
@@ -324,7 +327,11 @@ parse() {
 						value="$1"
 						shift
 					else
-						value=true
+						if [[ "$flag" =~ ^--no- ]]; then
+							value=false
+						else
+							value=true
+						fi
 					fi
 					program_option["$option_name"]="$value"
 					for alias in ${option_aliases["$option_name"]}; do

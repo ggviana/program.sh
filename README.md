@@ -12,12 +12,12 @@ name "biggest-files"
 description "List the biggest files"
 argument "<files>" "The path to the files" "./*"
 option "-n, --num <amount>" "Amount of results to be displayed" "10"
-option "--no-sizes" "Omit file sizes" "false"
+option "--no-cheese" "Omit cheese"
 parse "$@"
 
 # Access options
 echo "${program_option["num"]}"         # "10" or parsed value
-echo "${program_option["no-sizes"]}"    # "false" or "true"
+echo "${program_option["cheese"]}"       # "true" or "false"
 
 # Access positional args
 echo "${program_args[0]}"              # first positional arg (indexed)
@@ -36,7 +36,7 @@ Arguments:
 
 Options:
   -n, --num <amount>   Amount of results to be displayed (default: 10)
-  --no-sizes           Omit file sizes (default: false)
+  --no-cheese           Omit cheese (default: true)
 ```
 
 ## Installation
@@ -144,9 +144,9 @@ Declares a named option. Multiple options can be declared.
 | `description` | Description shown in the Options section |
 | `default`     | Default value (optional) |
 
-The option name is derived automatically from the flags string: the first long flag has its `--` stripped (`--num` → `num`, `--no-sizes` → `no-sizes`). If only a short flag is given, the `-` is stripped (`-f` → `f`). The derived name is the key used in `program_option`.
+The option name is derived automatically from the flags string: the first long flag has its `--` stripped (`--num` → `num`). For `--no-*` flags the `no-` prefix is also stripped (`--no-cheese` → `cheese`). If only a short flag is given, the `-` is stripped (`-f` → `f`). The derived name is the key used in `program_option`.
 
-**`--no-*` convention:** If the flags string contains a flag token that starts with `--no-`, the default value is automatically set to `true` when no explicit default is provided.
+**`--no-*` convention:** If the flags string contains a `--no-*` flag, the `no-` prefix is stripped from the key and the default is set to `true`. Passing the flag sets the key to `false`.
 
 ```bash
 # Value-accepting option with short and long forms
@@ -159,10 +159,10 @@ option "--force" "Skip confirmation"
 # program_option["force"] → "" by default
 # script --force  →  program_option["force"] → "true"
 
-# Negation flag — auto-defaults to true
-option "--no-sizes" "Omit file sizes"
-# program_option["no-sizes"] → "true" by default
-# script --no-sizes  →  program_option["no-sizes"] → "true" (already true; flag is a toggle-off)
+# Negation flag — strips no- prefix, defaults to true, flag sets to false
+option "--no-cheese" "Omit cheese"
+# program_option["cheese"] → "true" by default
+# script --no-cheese  →  program_option["cheese"] → "false"
 
 # Short flag only
 option "-v" "Verbose output"
@@ -369,7 +369,7 @@ These variables are populated by the framework and are available to scripts afte
 |----------|------|---------|
 | `program_args` | indexed | Positional args in order — `program_args[0]`, `program_args[1]`, … |
 | `program_arg` | associative | Positional args by name — `program_arg["port"]`, `program_arg["file"]`, … (populated from `<token>` names in the `argument` declaration) |
-| `program_option` | associative | Option values — `program_option["num"]`, `program_option["no-sizes"]`, … Initialised to each option's default; updated by `parse` when the flag is passed |
+| `program_option` | associative | Option values — `program_option["num"]`, `program_option["cheese"]`, … Initialised to each option's default; updated by `parse` when the flag is passed |
 | `program_args_default` | associative | Default values for the declared argument — keyed by the full argument name string |
 | `program_option_type` | associative | Declared type per option name — `program_option_type["to"]` → `"choice"` |
 | `program_option_choices` | associative | Space-separated choices or `"min max"` range per option name (set by `option_type` for `choice` and `between` types) — `program_option_choices["to"]` → `"480 720 1080"` |

@@ -12,10 +12,10 @@ parse "$@"
 src="${program_arg["path"]}"
 dest="backup-$(date +%Y%m%d%H%M%S).tar"
 
-if [ "${program_option["no-compress"]}" = "true" ]; then
-	tar -cf "$dest" "$src"
-	echo "Created $dest (uncompressed)"
-else
+if [ "${program_option["compress"]}" = "true" ]; then
 	tar -czf "${dest}.gz" "$src"
 	echo "Created ${dest}.gz"
+else
+	tar -cf "$dest" "$src"
+	echo "Created $dest (uncompressed)"
 fi

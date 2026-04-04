@@ -154,13 +154,13 @@ EOF
 		make_script <<'EOF'
 name "mytool"
 description "does stuff"
-option "--no-sizes" "Omit file sizes"
+option "--no-cheese" "Omit cheese"
 parse --help
 EOF
 	)
 	run "$script"
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"--no-sizes"* ]]
+	[[ "$output" == *"--no-cheese"* ]]
 }
 
 @test "option/default: shown as (default: X) in usage" {
@@ -327,13 +327,45 @@ EOF
 		make_script <<'EOF'
 name "mytool"
 description "does stuff"
-option "--no-sizes" "Omit file sizes"
+option "--no-cheese" "Omit cheese"
 parse --help
 EOF
 	)
 	run "$script"
 	[ "$status" -eq 0 ]
 	[[ "$output" == *"(default: true)"* ]]
+}
+
+@test "option/--no-flag: key strips no- prefix" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--no-cheese" "Omit cheese"
+parse
+echo "${program_option["cheese"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "true" ]
+}
+
+@test "option/--no-flag: passing flag sets key to false" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--no-cheese" "Omit cheese"
+parse --no-cheese
+echo "${program_option["cheese"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "false" ]
 }
 
 # ── usage ─────────────────────────────────────
