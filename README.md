@@ -218,6 +218,27 @@ The `choice` type also annotates the usage output:
 
 ---
 
+### `depends_of "<list>"`
+
+Declares external command dependencies required by the program. Can be called multiple times — entries accumulate. Checked inside `parse`, after flags are matched; a failing check prints an error and exits 1. Like other `parse` validations, `--help` and `--generate-completions` still work even when a dependency is missing.
+
+| Parameter | Description |
+|-----------|-------------|
+| `list`    | Comma-separated list of dependency entries |
+
+Each entry is either a **bare command name**, checked by running `<name> --version`, or a **full command** (containing a space), run exactly as given — use this form when `--version` isn't the right invocation.
+
+```bash
+depends_of "curl, jq"
+# runs: curl --version / jq --version
+# if either is missing: Error: missing dependency "jq" (command failed: jq --version)
+
+depends_of "docker -v"
+# runs "docker -v" verbatim instead of "docker --version"
+```
+
+---
+
 ### `generate_completions`
 
 Outputs a bash completion script for the current program to stdout. Called automatically by `parse` when `--generate-completions` is passed. Can also be called directly.
@@ -373,6 +394,7 @@ These variables are populated by the framework and are available to scripts afte
 | `program_args_default` | associative | Default values for the declared argument — keyed by the full argument name string |
 | `program_option_type` | associative | Declared type per option name — `program_option_type["to"]` → `"choice"` |
 | `program_option_choices` | associative | Space-separated choices or `"min max"` range per option name (set by `option_type` for `choice` and `between` types) — `program_option_choices["to"]` → `"480 720 1080"` |
+| `program_dependencies` | indexed | Declared dependency entries, in order — `program_dependencies[0]`, … (set by `depends_of`) |
 
 ---
 
@@ -395,3 +417,4 @@ brew install shellcheck shfmt
 
 - **Single positional argument declaration only.** `argument` overwrites the previous declaration if called more than once. Multiple positional values are still collected in `program_args` and `program_arg` as long as they are named in the single `argument` declaration (e.g. `argument "<key> <file>" …`).
 - **Option names must not contain colons or semicolons.** These characters are used as internal delimiters in `program_options`.
+- **`depends_of` actually executes the given command.** Stick to invocations with no side effects (e.g. `--version`, `-v`) — not something that starts a server, opens a REPL, or otherwise does real work.

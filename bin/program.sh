@@ -15,6 +15,7 @@ declare -i program_args_count=0
 declare -A program_option
 declare -A program_option_type
 declare -A program_option_choices
+declare -a program_dependencies
 
 # Sets the program name shown in the usage line.
 # Sets $program_name.
@@ -131,6 +132,32 @@ option_type() {
 	if [ "$type" = "choice" ] || [ "$type" = "between" ]; then
 		program_option_choices["$option_name"]="$*"
 	fi
+}
+
+# Declares external command dependencies required by the program. Can be called
+# multiple times; each call accepts a comma-separated list, and entries accumulate.
+# Checked by parse() after flags are matched — a failing check prints an error
+# and exits 1.
+#
+# Each entry is either a bare command name, checked by running "<name> --version",
+# or a full command (containing a space), run exactly as given — use this form
+# when --version isn't the right invocation (e.g. "docker -v").
+#
+# Usage: depends_of "<list>"
+#
+# Example:
+#   depends_of "curl, jq"        # runs: curl --version / jq --version
+#   depends_of "jq, docker -v"   # runs: jq --version    / docker -v
+depends_of() {
+	local dependencies_list="$1"
+	local dependency
+	local -a _depends_of_items
+	IFS=',' read -ra _depends_of_items <<<"$dependencies_list"
+	for dependency in "${_depends_of_items[@]}"; do
+		dependency=$(__trim "$dependency")
+		[ -z "$dependency" ] && continue
+		program_dependencies+=("$dependency")
+	done
 }
 
 # Outputs a bash completion script for the current program to stdout.
@@ -277,6 +304,7 @@ usage() {
 # - Matched flags store their value in $program_option["name"] and all aliases.
 #   Value-accepting flags consume the next token; boolean flags store "true".
 # - Unrecognised tokens are appended to $program_args (indexed) and $program_arg (named).
+# - Checks depends_of() dependencies; exits 1 if a command is missing or fails.
 # - Validates option_choices constraints; exits 1 on invalid value.
 # - If a mandatory argument is missing, prints an error and exits 1.
 #
@@ -358,6 +386,24 @@ parse() {
 			((_i++))
 		done <<<"$(__extract_arg_names "$program_args_name")"
 	fi
+
+	# Validate dependencies
+	for _dep in "${program_dependencies[@]}"; do
+		local -a _dep_cmd
+		local _dep_name
+		if [[ "$_dep" == *" "* ]]; then
+			read -ra _dep_cmd <<<"$_dep"
+			_dep_name="${_dep_cmd[0]}"
+		else
+			_dep_cmd=("$_dep" "--version")
+			_dep_name="$_dep"
+		fi
+		if ! "${_dep_cmd[@]}" &>/dev/null; then
+			echo "Error: missing dependency \"$_dep_name\" (command failed: ${_dep_cmd[*]})" >&2
+			usage >&2
+			exit 1
+		fi
+	done
 
 	# Validate option types
 	for _opt_name in "${!program_option_type[@]}"; do

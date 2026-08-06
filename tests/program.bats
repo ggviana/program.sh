@@ -907,6 +907,113 @@ EOF
 	[[ "$output" == *"ok"* ]]
 }
 
+# ── depends_of ─────────────────────────────────
+
+@test "depends_of/bare name: existing command passes" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+depends_of "true"
+parse
+echo "ok"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"ok"* ]]
+}
+
+@test "depends_of/bare name: missing command fails with error" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+depends_of "this-command-does-not-exist-xyz"
+parse
+echo "ok"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'Error: missing dependency "this-command-does-not-exist-xyz"'* ]]
+}
+
+@test "depends_of/comma list: names the specific missing dependency" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+depends_of "true, this-command-does-not-exist-xyz"
+parse
+echo "ok"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'Error: missing dependency "this-command-does-not-exist-xyz"'* ]]
+}
+
+@test "depends_of/full command: entry with a space runs verbatim instead of appending --version" {
+	local script
+	script=$(
+		make_script <<'EOF'
+fake_bin="$BATS_TEST_TMPDIR/fakecmd"
+cat >"$fake_bin" <<'INNER'
+#!/usr/bin/env bash
+[ "$1" = "-v" ] && exit 0
+exit 1
+INNER
+chmod +x "$fake_bin"
+export PATH="$BATS_TEST_TMPDIR:$PATH"
+
+name "mytool"
+description "does stuff"
+depends_of "fakecmd -v"
+parse
+echo "ok"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"ok"* ]]
+}
+
+@test "depends_of/multiple calls: entries accumulate across calls" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+depends_of "true"
+depends_of "this-command-does-not-exist-xyz"
+parse
+echo "ok"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'Error: missing dependency "this-command-does-not-exist-xyz"'* ]]
+}
+
+@test "depends_of/--help: bypasses dependency checks" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+depends_of "this-command-does-not-exist-xyz"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"Usage: mytool"* ]]
+}
+
 # ── generate_completions ──────────────────────
 
 @test "generate_completions: function name derived from program name" {

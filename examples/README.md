@@ -13,5 +13,6 @@ Each script demonstrates one feature of program.sh.
 | [`repeat.sh`](https://github.com/ggviana/program.sh/blob/main/examples/repeat.sh) | `option_type integer` — value must be a valid integer |
 | [`sleep-for.sh`](https://github.com/ggviana/program.sh/blob/main/examples/sleep-for.sh) | `option_type between` — value must be a float within a range |
 | [`completions.sh`](https://github.com/ggviana/program.sh/blob/main/examples/completions.sh) | `--generate-completions` — generating and installing tab completions |
+| [`depends-of.sh`](https://github.com/ggviana/program.sh/blob/main/examples/depends-of.sh) | `depends_of` — checks required commands exist before running |
 
 Run any script with `--help` to see its usage.
