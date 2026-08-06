@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Demonstrates: --generate-completions to produce a bash tab completion script
-# shellcheck source=../bin/program.sh
+# shellcheck source=bin/program.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../bin/program.sh"
 
 name "completions"

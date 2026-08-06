@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Demonstrates: option_type choice — value must be one of a fixed set
-# shellcheck source=../bin/program.sh
+# shellcheck source=bin/program.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../bin/program.sh"
 
 name "convert"

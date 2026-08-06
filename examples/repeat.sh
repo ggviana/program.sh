@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Demonstrates: option_type integer — value must be a valid integer
-# shellcheck source=../bin/program.sh
+# shellcheck source=bin/program.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../bin/program.sh"
 
 name "repeat"

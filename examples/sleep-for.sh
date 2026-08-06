@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Demonstrates: option_type between — value must be a float within a range
-# shellcheck source=../bin/program.sh
+# shellcheck source=bin/program.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../bin/program.sh"
 
 name "sleep-for"

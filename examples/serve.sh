@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Demonstrates: value-accepting option with a default
-# shellcheck source=../bin/program.sh
+# shellcheck source=bin/program.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../bin/program.sh"
 
 name "serve"

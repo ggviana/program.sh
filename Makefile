@@ -1,5 +1,5 @@
 lint:
-	shellcheck -x install.sh uninstall.sh bin/* lib/* tests/* $(find examples -name '*.sh' 2>/dev/null)
+	shellcheck -x install.sh uninstall.sh bin/* lib/* tests/* $$(find examples -name '*.sh' 2>/dev/null)
 
 fmt:
 	shfmt -w bin lib examples tests

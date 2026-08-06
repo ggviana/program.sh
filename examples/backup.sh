@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Demonstrates: --no-* flag convention (defaults to true, flag disables the behaviour)
-# shellcheck source=../bin/program.sh
+# shellcheck source=bin/program.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../bin/program.sh"
 
 name "backup"

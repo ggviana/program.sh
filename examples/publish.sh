@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Demonstrates: boolean flag — action gated behind --force
-# shellcheck source=../bin/program.sh
+# shellcheck source=bin/program.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../bin/program.sh"
 
 name "publish"
