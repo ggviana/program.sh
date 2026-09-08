@@ -15,6 +15,8 @@ declare -i program_args_count=0
 declare -A program_option
 declare -A program_option_type
 declare -A program_option_choices
+declare -A program_option_flag
+declare -A program_option_required
 declare -a program_dependencies
 
 # Sets the program name shown in the usage line.
@@ -102,11 +104,46 @@ option() {
 		local _alias="${_flag#-}"
 		_alias="${_alias#-}"
 		program_option["$_alias"]="$option_default_value"
+		# The flag error messages refer to: the first long form, else the short one
+		if [ -z "${program_option_flag["$option_name"]}" ] ||
+			[[ "$_flag" == --* && "${program_option_flag["$option_name"]}" != --* ]]; then
+			program_option_flag["$option_name"]="$_flag"
+		fi
 	done
+}
+
+# Resolves any flag or alias to the canonical option name registered by option().
+# Given "option \"-t, --to <res>\"", both "-t" and "--to" resolve to "to";
+# "--no-cheese" resolves to "cheese". Falls back to the dash-stripped input when
+# no declared option owns the flag.
+__resolve_option_name() {
+	local candidate="${1#-}"
+	candidate="${candidate#-}"
+	local _ro_options _ro_option _ro_name _ro_flags _ro_rest _ro_flag_list _ro_flag _ro_alias
+	IFS=';' read -ra _ro_options <<<"$program_options"
+	for _ro_option in "${_ro_options[@]}"; do
+		IFS=':' read -r _ro_name _ro_flags _ro_rest <<<"$_ro_option"
+		[ -n "$_ro_name" ] || continue
+		if [ "$_ro_name" = "$candidate" ]; then
+			echo "$candidate"
+			return
+		fi
+		IFS=$'\n' read -r -d ' ' -a _ro_flag_list <<<"$(__extract_flags "$_ro_flags")"
+		for _ro_flag in "${_ro_flag_list[@]}"; do
+			_ro_alias="${_ro_flag#-}"
+			_ro_alias="${_ro_alias#-}"
+			if [ "$_ro_alias" = "$candidate" ]; then
+				echo "$_ro_name"
+				return
+			fi
+		done
+	done
+	echo "$candidate"
 }
 
 # Declares the type of value an option accepts, enabling runtime validation and
 # (later) completion generation. Must be called after option() and before parse().
+# Any flag of the option may be given — aliases resolve to the canonical name.
 # Validation is skipped when the option value is empty.
 #
 # Types:
@@ -126,12 +163,42 @@ option_type() {
 	local flag="$1"
 	local type="$2"
 	shift 2
-	local option_name="${flag#-}"
-	option_name="${option_name#-}"
+	local option_name
+	option_name=$(__resolve_option_name "$flag")
 	program_option_type["$option_name"]="$type"
 	if [ "$type" = "choice" ] || [ "$type" = "between" ]; then
 		program_option_choices["$option_name"]="$*"
 	fi
+}
+
+# Declares an option as required. Must be called after option() and before parse().
+# parse() prints an error and exits 1 when the flag is not passed, the same way an
+# unsatisfied option_type does. Composes with option_type: a required flag must be
+# passed, and its value must then satisfy the declared type.
+# An option declared with a default value can never be missing, so requiring one is
+# a declaration error, as is requiring an option that has not been declared yet.
+#
+# Any flag of the option may be given — aliases resolve to the canonical name.
+#
+# Usage: required_option "<flag>"
+#
+# Example:
+#   option "--to <resolution>" "Target resolution"
+#   option_type "--to" choice "480" "720" "1080"
+#   required_option "--to"
+required_option() {
+	local flag="$1"
+	local option_name
+	option_name=$(__resolve_option_name "$flag")
+	if [ -z "${program_option["$option_name"]+declared}" ]; then
+		echo "Error: required_option \"$flag\" must be called after option \"$flag\"" >&2
+		exit 1
+	fi
+	if [ -n "${program_option["$option_name"]}" ]; then
+		echo "Error: required_option \"$flag\" has a default value, so it can never be missing" >&2
+		exit 1
+	fi
+	program_option_required["$option_name"]=true
 }
 
 # Declares external command dependencies required by the program. Can be called
@@ -292,6 +359,9 @@ usage() {
 				choices_display="${program_option_choices["$option_name"]// /, }"
 				suffix="$suffix (choices: $choices_display)"
 			fi
+			if [ -n "${program_option_required["$option_name"]}" ]; then
+				suffix="$suffix (required)"
+			fi
 			printf "  %-20s %s%s\n" "$option_flags" "$option_description" "$suffix"
 		done
 	fi
@@ -305,6 +375,7 @@ usage() {
 #   Value-accepting flags consume the next token; boolean flags store "true".
 # - Unrecognised tokens are appended to $program_args (indexed) and $program_arg (named).
 # - Checks depends_of() dependencies; exits 1 if a command is missing or fails.
+# - Checks required_option() declarations; exits 1 when a required flag is absent.
 # - Validates option_choices constraints; exits 1 on invalid value.
 # - If a mandatory argument is missing, prints an error and exits 1.
 #
@@ -314,6 +385,7 @@ parse() {
 	declare -A option_aliases # option_name → space-separated stripped flag names
 	declare -A program_flag_has_arg
 	declare -A program_flag_option_name
+	declare -A program_option_passed # option_name/alias → true when seen on the command line
 	IFS=';' read -ra options <<<"$program_options"
 	for option in "${options[@]}"; do
 		IFS=':' read -r option_name option_flags option_description option_default_value <<<"$option"
@@ -347,10 +419,19 @@ parse() {
 			;;
 		*)
 			local matched=false
+			local inline_flag="" inline_value=""
+
+			# --flag=value is accepted as an alternative to --flag value
+			if [[ "$arg" == --*=* ]]; then
+				inline_flag="${arg%%=*}"
+				inline_value="${arg#*=}"
+			fi
+
 			for flag in "${all_flags[@]}"; do
+				local option_name value
+
 				if [ "$flag" == "$arg" ]; then
-					local option_name="${program_flag_option_name["$flag"]}"
-					local value
+					option_name="${program_flag_option_name["$flag"]}"
 					if [ "${program_flag_has_arg["$flag"]}" = "true" ]; then
 						value="$1"
 						shift
@@ -361,12 +442,21 @@ parse() {
 							value=true
 						fi
 					fi
-					program_option["$option_name"]="$value"
-					for alias in ${option_aliases["$option_name"]}; do
-						program_option["$alias"]="$value"
-					done
-					matched=true
+				elif [ -n "$inline_flag" ] && [ "$flag" == "$inline_flag" ] &&
+					[ "${program_flag_has_arg["$flag"]}" = "true" ]; then
+					option_name="${program_flag_option_name["$flag"]}"
+					value="$inline_value"
+				else
+					continue
 				fi
+
+				program_option["$option_name"]="$value"
+				program_option_passed["$option_name"]=true
+				for alias in ${option_aliases["$option_name"]}; do
+					program_option["$alias"]="$value"
+					program_option_passed["$alias"]=true
+				done
+				matched=true
 			done
 			if [ "$matched" = false ]; then
 				program_args+=("$arg")
@@ -405,10 +495,33 @@ parse() {
 		fi
 	done
 
+	# Validate required options
+	for _req_name in "${!program_option_required[@]}"; do
+		if [ "${program_option_passed["$_req_name"]:-}" != true ]; then
+			echo "Error: option ${program_option_flag["$_req_name"]} is required" >&2
+			usage >&2
+			exit 1
+		fi
+	done
+
 	# Validate option types
 	for _opt_name in "${!program_option_type[@]}"; do
 		local _value="${program_option["$_opt_name"]}"
-		[ -z "$_value" ] && continue
+		local _opt_flag="${program_option_flag["$_opt_name"]:---$_opt_name}"
+		if [ -z "$_value" ]; then
+			# A choice flag that was actually passed must carry one of its choices.
+			# An option the caller never used stays unvalidated — there is no
+			# concept of a required option.
+			if [ "${program_option_passed["$_opt_name"]:-}" = true ] &&
+				[ "${program_option_type["$_opt_name"]}" = choice ]; then
+				local _missing_choices
+				_missing_choices="${program_option_choices["$_opt_name"]// /, }"
+				echo "Error: $_opt_flag requires one of: $_missing_choices" >&2
+				usage >&2
+				exit 1
+			fi
+			continue
+		fi
 		case "${program_option_type["$_opt_name"]}" in
 		choice)
 			local _choices="${program_option_choices["$_opt_name"]}"
@@ -422,14 +535,14 @@ parse() {
 			if [ "$_valid" = false ]; then
 				local _choices_display
 				_choices_display="${_choices// /, }"
-				echo "Error: invalid value for --$_opt_name: \"$_value\". Valid choices: $_choices_display" >&2
+				echo "Error: invalid value for $_opt_flag: \"$_value\". Valid choices: $_choices_display" >&2
 				usage >&2
 				exit 1
 			fi
 			;;
 		integer)
 			if [[ ! "$_value" =~ ^-?[0-9]+$ ]]; then
-				echo "Error: --$_opt_name expects an integer, got \"$_value\"" >&2
+				echo "Error: $_opt_flag expects an integer, got \"$_value\"" >&2
 				usage >&2
 				exit 1
 			fi
@@ -441,7 +554,7 @@ parse() {
 			_max=$(echo "${program_option_choices["$_opt_name"]}" | cut -d' ' -f2)
 			if ! [[ "$_value" =~ ^-?[0-9]*\.?[0-9]+$ ]] ||
 				! awk "BEGIN { exit !($_value >= $_min && $_value <= $_max) }"; then
-				echo "Error: --$_opt_name must be a number between $_min and $_max, got \"$_value\"" >&2
+				echo "Error: $_opt_flag must be a number between $_min and $_max, got \"$_value\"" >&2
 				usage >&2
 				exit 1
 			fi

@@ -173,11 +173,11 @@ option "-v" "Verbose output"
 
 ### `option_type "<flag>" <type> [<args>...]`
 
-Declares the type of value an option accepts. Must be called after the corresponding `option` declaration and before `parse`. Validation runs inside `parse` and exits 1 with a message on failure. Validation is skipped when the option value is empty.
+Declares the type of value an option accepts. Must be called after the corresponding `option` declaration and before `parse`. Validation runs inside `parse` and exits 1 with a message on failure. Validation is skipped when the option value is empty and the flag was not passed — there is no concept of a required option. A `choice` flag that *is* passed must carry one of its choices: `--to` with nothing after it, or `--to=`, exits 1.
 
 | Parameter | Description |
 |-----------|-------------|
-| `flag`    | The flag to constrain (e.g. `--to`). Leading dashes are stripped to resolve the option name. |
+| `flag`    | The flag to constrain (e.g. `--to`). Any flag of the option works — aliases resolve to the canonical option name. |
 | `type`    | One of `choice`, `integer`, `path`, `between` |
 | `args…`   | Required for `choice` (the valid values) and `between` (min and max) |
 
@@ -195,6 +195,8 @@ option "--to <resolution>" "Target resolution"
 option_type "--to" choice "480" "720" "1080"
 # script --to 720  → ok
 # script --to 4k   → Error: invalid value for --to: "4k". Valid choices: 480, 720, 1080
+# script --to      → Error: --to requires one of: 480, 720, 1080
+# script           → ok, "${program_option["to"]}" is empty and unvalidated
 
 option "--num <amount>" "Number of results" "10"
 option_type "--num" integer
@@ -211,9 +213,49 @@ option_type "--scale" between 0.0 1.0
 # script --scale 1.5  → Error: --scale must be a number between 0.0 and 1.0, got "1.5"
 ```
 
+Error messages name the option by its declared flag — the first long form, or the short one for a short-only option — regardless of which alias was used to declare the type.
+
 The `choice` type also annotates the usage output:
 ```
   --to <resolution>    Target resolution (choices: 480, 720, 1080)
+```
+
+---
+
+### `required_option "<flag>"`
+
+Declares an option as required. Must be called after the corresponding `option` declaration and before `parse`. When the flag is absent from the command line, `parse` prints an error and exits 1 — the same failure shape as an unsatisfied `option_type`. As with the other `parse` validations, `--help` and `--generate-completions` still work.
+
+| Parameter | Meaning |
+|-----------|---------|
+| `flag`    | The flag to require (e.g. `--to`). Any flag of the option works — aliases resolve to the canonical option name. |
+
+Presence is what is checked, not emptiness — passing the flag by any alias or in the `--flag=value` form satisfies it.
+
+```bash
+option "--to <resolution>" "Target resolution"
+option_type "--to" choice "480" "720" "1080"
+required_option "--to"
+
+# script --to 720   → ok
+# script            → Error: option --to is required
+# script --to=999   → Error: invalid value for --to: "999". Valid choices: 480, 720, 1080
+# script --to       → Error: --to requires one of: 480, 720, 1080
+```
+
+Two declaration-time errors guard against contradictory declarations, both exiting 1 before `parse` runs:
+
+```bash
+option "--to <resolution>" "Target" "720"
+required_option "--to"   # → Error: an option with a default can never be missing
+
+required_option "--to"   # → Error: must be called after option "--to"
+option "--to <resolution>" "Target"
+```
+
+It also annotates the usage output:
+```
+  --to <resolution>    Target resolution (choices: 480, 720, 1080) (required)
 ```
 
 ---
@@ -298,7 +340,9 @@ Parses the script's arguments. Must be called after all `option` and `argument` 
 - Handles `--help` / `-h` automatically: prints usage and exits 0.
 - Handles `--generate-completions` automatically: prints a bash completion script and exits 0.
 - For each matched flag, stores its value in `program_option["<name>"]`. Value-accepting flags consume the next token; boolean flags store `true`.
+- Value-accepting flags also accept the inline form `--flag=value` (split on the first `=`, so `--set=a=b` yields `a=b`). Boolean flags do not: `--rm=x` is left as a positional arg.
 - Unrecognised tokens are collected as positional args into `program_args` (indexed) and `program_arg` (named, if `argument` was declared).
+- If a `required_option` flag is absent, prints an error to stderr and exits 1.
 - If a mandatory argument (no default) is missing, prints an error to stderr and exits 1.
 
 ```bash
