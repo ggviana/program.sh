@@ -18,10 +18,15 @@ jobs:
         run: sudo apt-get install -y shellcheck
 
       - name: Install shfmt
+        env:
+          # Pinned rather than resolved from the releases API: that call is
+          # unauthenticated, and shared runner IPs regularly exhaust the 60/hr
+          # rate limit, leaving the version empty and the download URL a 404.
+          SHFMT_VERSION: v3.14.1
         run: |
-          SHFMT_VERSION=$(curl -s https://api.github.com/repos/mvdan/sh/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
           curl -fsSL "https://github.com/mvdan/sh/releases/download/${SHFMT_VERSION}/shfmt_${SHFMT_VERSION}_linux_amd64" -o /usr/local/bin/shfmt
           chmod +x /usr/local/bin/shfmt
+          shfmt --version
 
       - name: Format
         run: make fmt
