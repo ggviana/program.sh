@@ -171,31 +171,35 @@ option_type() {
 	fi
 }
 
-# Declares an option as required. Must be called after option() and before parse().
-# parse() prints an error and exits 1 when the flag is not passed, the same way an
-# unsatisfied option_type does. Composes with option_type: a required flag must be
-# passed, and its value must then satisfy the declared type.
-# An option declared with a default value can never be missing, so requiring one is
-# a declaration error, as is requiring an option that has not been declared yet.
+# Declares a required option. Stands in for option() — it takes the same flags and
+# description, registers the option identically, and additionally marks it required.
+# parse() prints an error and exits 1 when the flag is absent, the same way an
+# unsatisfied option_type does. Composes with option_type: the flag must be passed,
+# and its value must then satisfy the declared type.
 #
-# Any flag of the option may be given — aliases resolve to the canonical name.
+# There is no default parameter: an option with a default can never be missing, so
+# passing one — or requiring a --no-* flag, which defaults to true — is an error.
 #
-# Usage: required_option "<flag>"
+# Usage: required_option "<flags>" "<description>"
 #
 # Example:
-#   option "--to <resolution>" "Target resolution"
+#   required_option "--to <resolution>" "Target resolution"
 #   option_type "--to" choice "480" "720" "1080"
-#   required_option "--to"
 required_option() {
-	local flag="$1"
-	local option_name
-	option_name=$(__resolve_option_name "$flag")
-	if [ -z "${program_option["$option_name"]+declared}" ]; then
-		echo "Error: required_option \"$flag\" must be called after option \"$flag\"" >&2
+	local option_flags="$1"
+	if [ -n "${3:-}" ]; then
+		echo "Error: required_option \"$option_flags\" does not take a default value" >&2
 		exit 1
 	fi
+
+	option "$option_flags" "$2"
+
+	local _req_flags
+	IFS=$'\n' read -r -d ' ' -a _req_flags <<<"$(__extract_flags "$option_flags")"
+	local option_name
+	option_name=$(__resolve_option_name "${_req_flags[0]}")
 	if [ -n "${program_option["$option_name"]}" ]; then
-		echo "Error: required_option \"$flag\" has a default value, so it can never be missing" >&2
+		echo "Error: required_option \"$option_flags\" defaults to true, so it can never be missing" >&2
 		exit 1
 	fi
 	program_option_required["$option_name"]=true

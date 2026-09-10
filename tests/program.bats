@@ -817,55 +817,23 @@ EOF
 	[[ "$output" != *"--f "* ]]
 }
 
-@test "required_option: declared via a short alias annotates usage" {
+# ── required_option ───────────────────────────
+
+@test "required_option: registers the option like option() does" {
 	local script
 	script=$(
 		make_script <<'EOF'
 name "mytool"
 description "does stuff"
-option "-t, --to <resolution>" "Target resolution"
-required_option "-t"
-parse --help
+required_option "-t, --to <resolution>" "Target resolution"
+parse -t 720
+echo "to=${program_option["to"]} t=${program_option["t"]}"
 EOF
 	)
 	run "$script"
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"Target resolution (required)"* ]]
+	[ "$output" = "to=720 t=720" ]
 }
-
-@test "required_option: declared via a short alias reports the canonical flag" {
-	local script
-	script=$(
-		make_script <<'EOF'
-name "mytool"
-description "does stuff"
-option "-t, --to <resolution>" "Target resolution"
-required_option "-t"
-parse
-EOF
-	)
-	run "$script"
-	[ "$status" -eq 1 ]
-	[[ "$output" == *"option --to is required"* ]]
-}
-
-@test "required_option: rejects an aliased flag whose option has a default" {
-	local script
-	script=$(
-		make_script <<'EOF'
-name "mytool"
-description "does stuff"
-option "-t, --to <resolution>" "Target resolution" "720"
-required_option "-t"
-parse --help
-EOF
-	)
-	run "$script"
-	[ "$status" -eq 1 ]
-	[[ "$output" == *"has a default value"* ]]
-}
-
-# ── required_option ───────────────────────────
 
 @test "required_option: errors when the flag is not passed" {
 	local script
@@ -873,8 +841,7 @@ EOF
 		make_script <<'EOF'
 name "mytool"
 description "does stuff"
-option "--to <resolution>" "Target resolution"
-required_option "--to"
+required_option "--to <resolution>" "Target resolution"
 parse a.mp4
 echo "unreachable"
 EOF
@@ -891,8 +858,7 @@ EOF
 		make_script <<'EOF'
 name "mytool"
 description "does stuff"
-option "--to <resolution>" "Target resolution"
-required_option "--to"
+required_option "--to <resolution>" "Target resolution"
 parse --to 720 a.mp4
 echo "to=${program_option["to"]}"
 EOF
@@ -908,8 +874,7 @@ EOF
 		make_script <<'EOF'
 name "mytool"
 description "does stuff"
-option "--to <resolution>" "Target resolution"
-required_option "--to"
+required_option "--to <resolution>" "Target resolution"
 parse --to=720
 echo "to=${program_option["to"]}"
 EOF
@@ -919,31 +884,13 @@ EOF
 	[ "$output" = "to=720" ]
 }
 
-@test "required_option: satisfied by a boolean flag" {
-	local script
-	script=$(
-		make_script <<'EOF'
-name "mytool"
-description "does stuff"
-option "--force" "Force mode"
-required_option "--force"
-parse --force
-echo "force=${program_option["force"]}"
-EOF
-	)
-	run "$script"
-	[ "$status" -eq 0 ]
-	[ "$output" = "force=true" ]
-}
-
 @test "required_option: satisfied when passed by an alias" {
 	local script
 	script=$(
 		make_script <<'EOF'
 name "mytool"
 description "does stuff"
-option "-t, --to <resolution>" "Target resolution"
-required_option "--to"
+required_option "-t, --to <resolution>" "Target resolution"
 parse -t 720
 echo "to=${program_option["to"]}"
 EOF
@@ -953,15 +900,45 @@ EOF
 	[ "$output" = "to=720" ]
 }
 
+@test "required_option: reports the canonical flag for an aliased option" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+required_option "-t, --to <resolution>" "Target resolution"
+parse
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"option --to is required"* ]]
+}
+
+@test "required_option: works with a boolean flag" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+required_option "--force" "Force mode"
+parse --force
+echo "force=${program_option["force"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "force=true" ]
+}
+
 @test "required_option: composes with option_type — missing flag reports required" {
 	local script
 	script=$(
 		make_script <<'EOF'
 name "mytool"
 description "does stuff"
-option "--to <resolution>" "Target resolution"
+required_option "--to <resolution>" "Target resolution"
 option_type "--to" choice "480" "720"
-required_option "--to"
 parse a.mp4
 EOF
 	)
@@ -976,9 +953,8 @@ EOF
 		make_script <<'EOF'
 name "mytool"
 description "does stuff"
-option "--to <resolution>" "Target resolution"
+required_option "--to <resolution>" "Target resolution"
 option_type "--to" choice "480" "720"
-required_option "--to"
 parse --to=999
 EOF
 	)
@@ -993,8 +969,7 @@ EOF
 		make_script <<'EOF'
 name "mytool"
 description "does stuff"
-option "--to <resolution>" "Target resolution"
-required_option "--to"
+required_option "--to <resolution>" "Target resolution"
 parse --help
 EOF
 	)
@@ -1009,8 +984,7 @@ EOF
 		make_script <<'EOF'
 name "mytool"
 description "does stuff"
-option "--to <resolution>" "Target resolution"
-required_option "--to"
+required_option "--to <resolution>" "Target resolution"
 parse --help
 EOF
 	)
@@ -1019,36 +993,34 @@ EOF
 	[[ "$output" == *"Target resolution (required)"* ]]
 }
 
-@test "required_option: rejects an option that has a default" {
+@test "required_option: rejects a default value argument" {
 	local script
 	script=$(
 		make_script <<'EOF'
 name "mytool"
 description "does stuff"
-option "--to <resolution>" "Target resolution" "720"
-required_option "--to"
+required_option "--to <resolution>" "Target resolution" "720"
 parse --help
 EOF
 	)
 	run "$script"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"has a default value"* ]]
+	[[ "$output" == *"does not take a default value"* ]]
 }
 
-@test "required_option: rejects a flag declared before its option" {
+@test "required_option: rejects a --no-* flag" {
 	local script
 	script=$(
 		make_script <<'EOF'
 name "mytool"
 description "does stuff"
-required_option "--to"
-option "--to <resolution>" "Target resolution"
+required_option "--no-cheese" "Omit cheese"
 parse --help
 EOF
 	)
 	run "$script"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"must be called after option"* ]]
+	[[ "$output" == *"defaults to true"* ]]
 }
 
 # ── option_type ───────────────────────────────

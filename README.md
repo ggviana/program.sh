@@ -136,7 +136,7 @@ parse "$@"
 
 ### `option "<flags>" "<description>" "<default>"`
 
-Declares a named option. Multiple options can be declared.
+Declares a named option. Multiple options can be declared. Use `required_option` in place of `option` when the flag must be provided.
 
 | Parameter     | Description |
 |---------------|-------------|
@@ -222,20 +222,20 @@ The `choice` type also annotates the usage output:
 
 ---
 
-### `required_option "<flag>"`
+### `required_option "<flags>" "<description>"`
 
-Declares an option as required. Must be called after the corresponding `option` declaration and before `parse`. When the flag is absent from the command line, `parse` prints an error and exits 1 — the same failure shape as an unsatisfied `option_type`. As with the other `parse` validations, `--help` and `--generate-completions` still work.
+Declares a required option. Stands in for `option` rather than accompanying it — same flags string, same description, and the option is registered identically, with the addition that `parse` prints an error and exits 1 when the flag is absent. That is the same failure shape as an unsatisfied `option_type`, and as with the other `parse` validations, `--help` and `--generate-completions` still work.
 
-| Parameter | Meaning |
-|-----------|---------|
-| `flag`    | The flag to require (e.g. `--to`). Any flag of the option works — aliases resolve to the canonical option name. |
+| Parameter     | Meaning |
+|---------------|---------|
+| `flags`       | One or more flag strings (see [Flag format](#flag-format)) |
+| `description` | Text shown in the usage output |
 
-Presence is what is checked, not emptiness — passing the flag by any alias or in the `--flag=value` form satisfies it.
+There is no `default` parameter — an option with a default can never be missing. Presence is what is checked, not emptiness, so passing the flag by any alias or in the `--flag=value` form satisfies it.
 
 ```bash
-option "--to <resolution>" "Target resolution"
+required_option "--to <resolution>" "Target resolution"
 option_type "--to" choice "480" "720" "1080"
-required_option "--to"
 
 # script --to 720   → ok
 # script            → Error: option --to is required
@@ -246,11 +246,11 @@ required_option "--to"
 Two declaration-time errors guard against contradictory declarations, both exiting 1 before `parse` runs:
 
 ```bash
-option "--to <resolution>" "Target" "720"
-required_option "--to"   # → Error: an option with a default can never be missing
+required_option "--to <resolution>" "Target" "720"
+# → Error: required_option "--to <resolution>" does not take a default value
 
-required_option "--to"   # → Error: must be called after option "--to"
-option "--to <resolution>" "Target"
+required_option "--no-cheese" "Omit cheese"
+# → Error: required_option "--no-cheese" defaults to true, so it can never be missing
 ```
 
 It also annotates the usage output:
