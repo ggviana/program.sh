@@ -138,6 +138,14 @@ parse "$@"
 
 Declares a named option. Multiple options can be declared. Use `required_option` in place of `option` when the flag must be provided.
 
+Each option name and each flag may be declared only once. A redeclaration — the same derived name, or a flag another option already owns — prints an error and exits 1 before `parse` runs, whichever declaration form was used:
+
+```bash
+option "-t, --to <resolution>" "Target"
+option "-t, --time <seconds>"  "Time"
+# → Error: option "-t, --time <seconds>" redeclares the flag "-t", already declared by "-t, --to <resolution>"
+```
+
 | Parameter     | Description |
 |---------------|-------------|
 | `flags`       | One or more flag strings (see [Flag format](#flag-format)) |

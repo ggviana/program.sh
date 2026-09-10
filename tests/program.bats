@@ -1023,6 +1023,119 @@ EOF
 	[[ "$output" == *"defaults to true"* ]]
 }
 
+# ── redeclaration ─────────────────────────────
+
+@test "option: redeclaring the same option name errors" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--to <resolution>" "First"
+option "--to <resolution>" "Second"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'redeclares the option name "to"'* ]]
+}
+
+@test "option: redeclaring a flag owned by another option errors" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-t, --to <resolution>" "Target"
+option "-t, --time <seconds>" "Time"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'redeclares the flag "-t"'* ]]
+}
+
+@test "option: --no-* and its plain name collide" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--no-cheese" "Omit cheese"
+option "--cheese <kind>" "Cheese"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'redeclares the option name "cheese"'* ]]
+}
+
+@test "option: distinct options do not collide" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-t, --to <resolution>" "Target"
+option "-s, --size <n>" "Size"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+}
+
+@test "required_option: redeclaring an existing option errors" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--to <resolution>" "Target"
+required_option "--to <resolution>" "Target"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'required_option "--to <resolution>" redeclares'* ]]
+}
+
+@test "option: redeclaring a required_option errors" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+required_option "--to <resolution>" "Target"
+option "--to <resolution>" "Target"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'option "--to <resolution>" redeclares'* ]]
+}
+
+@test "required_option: declared twice errors" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+required_option "--to <resolution>" "Target"
+required_option "--to <resolution>" "Target"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'required_option "--to <resolution>" redeclares'* ]]
+}
+
 # ── option_type ───────────────────────────────
 
 @test "option_type/choice: valid choices shown in usage" {

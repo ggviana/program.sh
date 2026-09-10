@@ -16,6 +16,7 @@ declare -A program_option
 declare -A program_option_type
 declare -A program_option_choices
 declare -A program_option_flag
+declare -A program_option_declared
 declare -A program_option_required
 declare -a program_dependencies
 
@@ -59,7 +60,8 @@ argument() {
 	program_args_default["$1"]="$3"
 }
 
-# Declares a named option. Multiple options can be declared.
+# Declares a named option. Multiple options can be declared, but each option name
+# and each flag may be declared only once — a redeclaration exits 1.
 # The option name is derived from the first long flag (--flag → flag),
 # falling back to the short flag (-f → f).
 # --no-* flags strip the no- prefix from the key, default to true, and set to false when passed.
@@ -93,13 +95,33 @@ option() {
 		fi
 	fi
 
+	local _flags
+	IFS=$'\n' read -r -d ' ' -a _flags <<<"$(__extract_flags "$option_flags")"
+
+	# Reject redeclarations before touching any state. Reported under whichever
+	# declaration form the caller used, since required_option() delegates here.
+	local _decl="option"
+	[ "${FUNCNAME[1]:-}" = required_option ] && _decl="required_option"
+	if [ -n "${program_option_declared["$option_name"]+declared}" ]; then
+		echo "Error: $_decl \"$option_flags\" redeclares the option name \"$option_name\", already declared by \"${program_option_declared["$option_name"]}\"" >&2
+		exit 1
+	fi
+	for _flag in "${_flags[@]}"; do
+		if [ -n "${program_option_declared["$_flag"]+declared}" ]; then
+			echo "Error: $_decl \"$option_flags\" redeclares the flag \"$_flag\", already declared by \"${program_option_declared["$_flag"]}\"" >&2
+			exit 1
+		fi
+	done
+	program_option_declared["$option_name"]="$option_flags"
+	for _flag in "${_flags[@]}"; do
+		program_option_declared["$_flag"]="$option_flags"
+	done
+
 	program_has_options=true
 	program_options+="$option_name:$option_flags:$option_description:$option_default_value;"
 
 	# Initialize the canonical name and every stripped flag alias with the default
 	program_option["$option_name"]="$option_default_value"
-	local _flags
-	IFS=$'\n' read -r -d ' ' -a _flags <<<"$(__extract_flags "$option_flags")"
 	for _flag in "${_flags[@]}"; do
 		local _alias="${_flag#-}"
 		_alias="${_alias#-}"
