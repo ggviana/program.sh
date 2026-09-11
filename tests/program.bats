@@ -1483,6 +1483,122 @@ EOF
 	[[ "$output" == *'required_option "--to <resolution>" redeclares'* ]]
 }
 
+# ── optional option values ────────────────────
+
+@test "option: [value] with no value after it stores true" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--cheese [type]" "Add cheese"
+parse --cheese
+echo "cheese=${program_option["cheese"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "cheese=true" ]
+}
+
+@test "option: [value] takes the next token when it is data" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--cheese [type]" "Add cheese"
+parse --cheese brie
+echo "cheese=${program_option["cheese"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "cheese=brie" ]
+}
+
+@test "option: [value] does not swallow a following flag" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--cheese [type]" "Add cheese"
+option "--to <r>" "Target"
+parse --cheese --to 720
+echo "cheese=${program_option["cheese"]} to=${program_option["to"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "cheese=true to=720" ]
+}
+
+@test "option: [value] accepts the inline form" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--cheese [type]" "Add cheese"
+parse --cheese=gouda
+echo "cheese=${program_option["cheese"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "cheese=gouda" ]
+}
+
+@test "option: [value] at the end of the arguments stores true" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--to <r>" "Target"
+option "--cheese [type]" "Add cheese"
+parse --to 720 --cheese
+echo "cheese=${program_option["cheese"]} to=${program_option["to"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "cheese=true to=720" ]
+}
+
+@test "option: [value] takes a negative number as data" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--offset [n]" "Offset"
+parse --offset -5
+echo "offset=${program_option["offset"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "offset=-5" ]
+}
+
+@test "option: [value] is value-accepting for completions" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--cheese [type]" "Add cheese"
+option_type "--cheese" choice "brie" "gouda"
+parse --generate-completions
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *'compgen -W "brie gouda"'* ]]
+}
+
 # ── option_type redeclaration ─────────────────
 
 @test "option_type: declaring a type twice for one option errors" {

@@ -90,7 +90,9 @@ argument() {
 # Usage: option "<flags>" "<description>" "<default>"
 #
 # Flag forms: -f | --flag | -f, --flag | -f <val> | --flag <val> | --no-feature
-# A flag is value-accepting when the flags string contains <...>.
+# A flag is value-accepting when the flags string contains <...>, and takes an
+# optional value when it contains [...] — in that form, passing the flag with no
+# value after it stores "true", exactly like a boolean flag.
 #
 # Example:
 #   option "-n, --num <amount>" "Number of results" "10"
@@ -153,6 +155,14 @@ option() {
 			program_option_flag["$option_name"]="$_flag"
 		fi
 	done
+}
+
+# True when a token reads as a flag rather than as data: it starts with a dash, is
+# not a lone "-", and is not a negative number. Both of those are ordinary arguments.
+__looks_like_flag() {
+	[[ "$1" == -?* ]] || return 1
+	[[ "$1" =~ ^-[0-9]+([.][0-9]+)?$ ]] && return 1
+	return 0
 }
 
 # Formats a file's modification time as vYYYY.mm.DD.HHmmss. Handles both BSD
@@ -356,7 +366,7 @@ generate_completions() {
 		[ -z "$_gc_name" ] && continue
 
 		local _gc_has_value=false
-		[[ "$_gc_flags" =~ \<.*\> ]] && _gc_has_value=true
+		[[ "$_gc_flags" =~ \<.*\> || "$_gc_flags" =~ \[.*\] ]] && _gc_has_value=true
 
 		local _gc_flag_tokens=()
 		while IFS= read -r _gc_f; do
@@ -497,6 +507,7 @@ parse() {
 	declare -a all_flags
 	declare -A option_aliases # option_name → space-separated stripped flag names
 	declare -A program_flag_has_arg
+	declare -A program_flag_optional_arg
 	declare -A program_flag_option_name
 	declare -A program_option_passed # option_name/alias → true when seen on the command line
 	IFS=';' read -ra options <<<"$program_options"
@@ -509,8 +520,12 @@ parse() {
 			all_flags+=("$flag")
 			program_flag_option_name["$flag"]="$option_name"
 			program_flag_has_arg["$flag"]=false
+			program_flag_optional_arg["$flag"]=false
 			if [ -n "$(__extract_arg_names "$option_flags")" ]; then
 				program_flag_has_arg["$flag"]=true
+			elif [ -n "$(__extract_optional_arg_names "$option_flags")" ]; then
+				program_flag_has_arg["$flag"]=true
+				program_flag_optional_arg["$flag"]=true
 			fi
 			local alias="${flag#-}"
 			alias="${alias#-}"
@@ -549,7 +564,15 @@ parse() {
 
 				if [ "$flag" == "$arg" ]; then
 					option_name="${program_flag_option_name["$flag"]}"
-					if [ "${program_flag_has_arg["$flag"]}" = "true" ]; then
+					if [ "${program_flag_optional_arg["$flag"]}" = "true" ]; then
+						# [value] is taken only when the next token is data, not a flag
+						if [ "$#" -gt 0 ] && ! __looks_like_flag "$1"; then
+							value="$1"
+							shift
+						else
+							value=true
+						fi
+					elif [ "${program_flag_has_arg["$flag"]}" = "true" ]; then
 						value="$1"
 						shift
 					else
@@ -578,8 +601,7 @@ parse() {
 			if [ "$matched" = false ]; then
 				# A token that looks like a flag but matches nothing is a mistake, not a
 				# positional. A lone "-" and negative numbers stay arguments.
-				if [ "$program_allow_unknown_options" = false ] && [[ "$arg" == -?* ]] &&
-					! [[ "$arg" =~ ^-[0-9]+([.][0-9]+)?$ ]]; then
+				if [ "$program_allow_unknown_options" = false ] && __looks_like_flag "$arg"; then
 					if [ -n "$inline_flag" ] && [ -n "${program_flag_has_arg["$inline_flag"]+declared}" ]; then
 						echo "Error: option $inline_flag does not take a value" >&2
 					else
