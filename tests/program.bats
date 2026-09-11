@@ -1023,6 +1023,235 @@ EOF
 	[[ "$output" == *"defaults to true"* ]]
 }
 
+# ── version ───────────────────────────────────
+
+@test "version: --version prints the declared string" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+version "1.4.2"
+parse --version
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "1.4.2" ]
+}
+
+@test "version: falls back to the script mtime as vYYYY.mm.DD.HHmmss" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+parse --version
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[[ "$output" =~ ^v[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]{6}$ ]]
+}
+
+@test "version: mtime fallback matches the file's own timestamp" {
+	local script expected
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+parse --version
+EOF
+	)
+	expected=$(date -r "$(stat -f %m "$script" 2>/dev/null || stat -c %Y "$script")" +"v%Y.%m.%d.%H%M%S" 2>/dev/null ||
+		date -d "@$(stat -c %Y "$script")" +"v%Y.%m.%d.%H%M%S")
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "$expected" ]
+}
+
+@test "version: --version is listed in usage" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"--version"* ]]
+	[[ "$output" == *"Show the version"* ]]
+}
+
+@test "version: declaring --version as an option is rejected" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--version <v>" "Version"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'redeclares the option name "version"'* ]]
+}
+
+@test "version: declaring -h as an option is rejected" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-h, --host <h>" "Host"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'redeclares the flag "-h"'* ]]
+}
+
+# ── option_env ────────────────────────────────
+
+@test "option_env: fills the option from the environment" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-p, --port <port>" "Port" "8080"
+option_env "--port" "MYTOOL_PORT"
+parse
+echo "port=${program_option["port"]}"
+EOF
+	)
+	MYTOOL_PORT=9000 run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "port=9000" ]
+}
+
+@test "option_env: the command line beats the environment" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-p, --port <port>" "Port" "8080"
+option_env "--port" "MYTOOL_PORT"
+parse --port=1234
+echo "port=${program_option["port"]}"
+EOF
+	)
+	MYTOOL_PORT=9000 run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "port=1234" ]
+}
+
+@test "option_env: the default applies when the variable is unset" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-p, --port <port>" "Port" "8080"
+option_env "--port" "MYTOOL_PORT"
+parse
+echo "port=${program_option["port"]}"
+EOF
+	)
+	run env -u MYTOOL_PORT "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "port=8080" ]
+}
+
+@test "option_env: an empty variable does not override the default" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-p, --port <port>" "Port" "8080"
+option_env "--port" "MYTOOL_PORT"
+parse
+echo "port=${program_option["port"]}"
+EOF
+	)
+	MYTOOL_PORT='' run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "port=8080" ]
+}
+
+@test "option_env: the value reaches every alias" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-p, --port <port>" "Port"
+option_env "-p" "MYTOOL_PORT"
+parse
+echo "port=${program_option["port"]} p=${program_option["p"]}"
+EOF
+	)
+	MYTOOL_PORT=9000 run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "port=9000 p=9000" ]
+}
+
+@test "option_env: an environment value satisfies required_option" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+required_option "--token <t>" "API token"
+option_env "--token" "MYTOOL_TOKEN"
+parse
+echo "token=${program_option["token"]}"
+EOF
+	)
+	MYTOOL_TOKEN=secret run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "token=secret" ]
+}
+
+@test "option_env: an environment value is checked by option_type" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--port <port>" "Port"
+option_env "--port" "MYTOOL_PORT"
+option_type "--port" integer
+parse
+EOF
+	)
+	MYTOOL_PORT=abc run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'--port expects an integer, got "abc"'* ]]
+}
+
+@test "option_env: the variable is shown in usage" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--port <port>" "Port"
+option_env "--port" "MYTOOL_PORT"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"(env: MYTOOL_PORT)"* ]]
+}
+
 # ── redeclaration ─────────────────────────────
 
 @test "option: redeclaring the same option name errors" {

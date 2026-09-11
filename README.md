@@ -102,6 +102,22 @@ description "Kills the process listening on the given port"
 
 ---
 
+### `version "<string>"`
+
+Sets the version reported by `--version`. Optional — when it is not called, `--version` falls back to the modification time of the running script, formatted `vYYYY.mm.DD.HHmmss`, so every script reports a version without declaring one.
+
+```bash
+version "1.4.2"
+# script --version → 1.4.2
+
+# without version():
+# script --version → v2026.09.10.210900
+```
+
+`--version` is handled by `parse` and exits 0, like `--help`. Declaring an option named `--version` (or `--help`, `-h`, `--generate-completions`) is rejected as a redeclaration rather than silently shadowed.
+
+---
+
 ### `argument "<name>" "<description>" "<default>"`
 
 Declares a single positional argument. Only one positional argument declaration is supported per script.
@@ -230,6 +246,35 @@ The `choice` type also annotates the usage output:
 
 ---
 
+### `option_env "<flag>" "<VARIABLE>"`
+
+Declares an environment variable to fall back to when the flag is absent from the command line. Must be called after the corresponding option declaration and before `parse`.
+
+| Parameter  | Meaning |
+|------------|---------|
+| `flag`     | The flag to back (e.g. `--port`). Any flag of the option works — aliases resolve to the canonical option name. |
+| `VARIABLE` | Name of the environment variable to read |
+
+Precedence is **command line, then environment, then the declared default**. An empty or unset variable is ignored, so it never overrides a default. The value is filled in before any validation runs, which means it satisfies `required_option` and is checked by `option_type` exactly like a value typed on the command line.
+
+```bash
+option "-p, --port <port>" "Port to listen on" "8080"
+option_env "--port" "PORT"
+option_type "--port" integer
+
+# script --port 1234   → 1234   (command line)
+# PORT=9000 script     → 9000   (environment)
+# script               → 8080   (default)
+# PORT=abc script      → Error: --port expects an integer, got "abc"
+```
+
+It also annotates the usage output:
+```
+  -p, --port <port>    Port to listen on (default: 8080) (env: PORT)
+```
+
+---
+
 ### `required_option "<flags>" "<description>"`
 
 Declares a required option. Stands in for `option` rather than accompanying it — same flags string, same description, and the option is registered identically, with the addition that `parse` prints an error and exits 1 when the flag is absent. That is the same failure shape as an unsatisfied `option_type`, and as with the other `parse` validations, `--help` and `--generate-completions` still work.
@@ -347,9 +392,11 @@ Parses the script's arguments. Must be called after all `option` and `argument` 
 
 - Handles `--help` / `-h` automatically: prints usage and exits 0.
 - Handles `--generate-completions` automatically: prints a bash completion script and exits 0.
+- Handles `--version` automatically: prints the declared version, or the script's modification time, and exits 0.
 - For each matched flag, stores its value in `program_option["<name>"]`. Value-accepting flags consume the next token; boolean flags store `true`.
 - Value-accepting flags also accept the inline form `--flag=value` (split on the first `=`, so `--set=a=b` yields `a=b`). Boolean flags do not: `--rm=x` is left as a positional arg.
 - Unrecognised tokens are collected as positional args into `program_args` (indexed) and `program_arg` (named, if `argument` was declared).
+- Fills options from their `option_env` variables before validating anything.
 - If a `required_option` flag is absent, prints an error to stderr and exits 1.
 - If a mandatory argument (no default) is missing, prints an error to stderr and exits 1.
 

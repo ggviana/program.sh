@@ -7,6 +7,7 @@ program_has_options=false
 program_options=""
 program_args_name=""
 program_args_description=""
+program_version=""
 # shellcheck disable=SC2034
 declare -A program_arg
 declare -a program_args
@@ -16,7 +17,15 @@ declare -A program_option
 declare -A program_option_type
 declare -A program_option_choices
 declare -A program_option_flag
-declare -A program_option_declared
+declare -A program_option_env
+# Built-in flags are pre-registered so a script that declares one of them gets the
+# same redeclaration error as any other collision, instead of being shadowed.
+declare -A program_option_declared=(
+	["help"]="--help, -h" ["--help"]="--help, -h" ["-h"]="--help, -h"
+	["version"]="--version" ["--version"]="--version"
+	["generate-completions"]="--generate-completions"
+	["--generate-completions"]="--generate-completions"
+)
 declare -A program_option_required
 declare -a program_dependencies
 
@@ -40,6 +49,16 @@ name() {
 #   description "Kills the process listening on the given port"
 description() {
 	program_description="$1"
+}
+
+# Sets the version string reported by --version. Optional: when it is not called,
+# --version falls back to the modification time of the running script, formatted
+# vYYYY.mm.DD.HHmmss, so every script has a version without declaring one.
+# Sets $program_version.
+#
+# Usage: version "<string>"
+version() {
+	program_version="$1"
 }
 
 # Declares a single positional argument. Only one declaration is supported per script.
@@ -134,6 +153,28 @@ option() {
 	done
 }
 
+# Formats a file's modification time as vYYYY.mm.DD.HHmmss. Handles both BSD
+# (stat -f %m, date -r <epoch>) and GNU (stat -c %Y, date -d @<epoch>) userlands.
+# Returns non-zero when the file is unreadable or neither flavour is available.
+__file_version() {
+	local file="$1" epoch
+	[ -f "$file" ] || return 1
+	epoch=$(stat -f %m "$file" 2>/dev/null) || epoch=$(stat -c %Y "$file" 2>/dev/null) || return 1
+	[ -n "$epoch" ] || return 1
+	date -r "$epoch" +"v%Y.%m.%d.%H%M%S" 2>/dev/null ||
+		date -d "@$epoch" +"v%Y.%m.%d.%H%M%S" 2>/dev/null
+}
+
+# Prints the version reported by --version: the declared string when version() was
+# called, otherwise the running script's modification time.
+__program_version() {
+	if [ -n "$program_version" ]; then
+		echo "$program_version"
+	else
+		__file_version "$0" || echo "unknown"
+	fi
+}
+
 # Resolves any flag or alias to the canonical option name registered by option().
 # Given "option \"-t, --to <res>\"", both "-t" and "--to" resolve to "to";
 # "--no-cheese" resolves to "cheese". Falls back to the dash-stripped input when
@@ -191,6 +232,24 @@ option_type() {
 	if [ "$type" = "choice" ] || [ "$type" = "between" ]; then
 		program_option_choices["$option_name"]="$*"
 	fi
+}
+
+# Declares an environment variable to fall back to when the flag is absent from the
+# command line. Must be called after the corresponding option declaration and before
+# parse(). Precedence is: command line, then environment, then the declared default.
+# An environment value satisfies required_option() and is checked by option_type()
+# exactly like a value passed on the command line.
+# Any flag of the option may be given — aliases resolve to the canonical name.
+#
+# Usage: option_env "<flag>" "<VARIABLE>"
+#
+# Example:
+#   option "-p, --port <port>" "Port to listen on" "8080"
+#   option_env "--port" "PORT"
+option_env() {
+	local option_name
+	option_name=$(__resolve_option_name "$1")
+	program_option_env["$option_name"]="$2"
 }
 
 # Declares a required option. Stands in for option() — it takes the same flags and
@@ -385,6 +444,9 @@ usage() {
 				choices_display="${program_option_choices["$option_name"]// /, }"
 				suffix="$suffix (choices: $choices_display)"
 			fi
+			if [ -n "${program_option_env["$option_name"]}" ]; then
+				suffix="$suffix (env: ${program_option_env["$option_name"]})"
+			fi
 			if [ -n "${program_option_required["$option_name"]}" ]; then
 				suffix="$suffix (required)"
 			fi
@@ -392,15 +454,18 @@ usage() {
 		done
 	fi
 	printf "  %-20s %s\n" "--help, -h" "Show this help message"
+	printf "  %-20s %s\n" "--version" "Show the version"
 	printf "  %-20s %s\n" "--generate-completions" "Output a bash completion script"
 }
 
 # Parses the script's arguments. Must be called after all option() and argument() declarations.
 # - Handles --help / -h: prints usage and exits 0.
+# - Handles --version: prints the declared version, or the script's mtime, exits 0.
 # - Matched flags store their value in $program_option["name"] and all aliases.
 #   Value-accepting flags consume the next token; boolean flags store "true".
 # - Unrecognised tokens are appended to $program_args (indexed) and $program_arg (named).
 # - Checks depends_of() dependencies; exits 1 if a command is missing or fails.
+# - Fills options from option_env() variables before validating anything.
 # - Checks required_option() declarations; exits 1 when a required flag is absent.
 # - Validates option_choices constraints; exits 1 on invalid value.
 # - If a mandatory argument is missing, prints an error and exits 1.
@@ -437,6 +502,10 @@ parse() {
 		case "$arg" in
 		--help | -h)
 			usage
+			exit 0
+			;;
+		--version)
+			__program_version
 			exit 0
 			;;
 		--generate-completions)
@@ -502,6 +571,22 @@ parse() {
 			((_i++))
 		done <<<"$(__extract_arg_names "$program_args_name")"
 	fi
+
+	# Environment fallback for options the command line did not provide. Runs before
+	# every validation, so an environment value satisfies required_option() and is
+	# checked by option_type() like any other.
+	local _env_name _env_var _env_alias
+	for _env_name in "${!program_option_env[@]}"; do
+		[ "${program_option_passed["$_env_name"]:-}" = true ] && continue
+		_env_var="${program_option_env["$_env_name"]}"
+		[ -n "${!_env_var:-}" ] || continue
+		program_option["$_env_name"]="${!_env_var}"
+		program_option_passed["$_env_name"]=true
+		for _env_alias in ${option_aliases["$_env_name"]}; do
+			program_option["$_env_alias"]="${!_env_var}"
+			program_option_passed["$_env_alias"]=true
+		done
+	done
 
 	# Validate dependencies
 	for _dep in "${program_dependencies[@]}"; do
