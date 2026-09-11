@@ -1483,6 +1483,57 @@ EOF
 	[[ "$output" == *'required_option "--to <resolution>" redeclares'* ]]
 }
 
+# ── defaults ──────────────────────────────────
+
+@test "option: a default keeps its surrounding whitespace" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--delimiter <d>" "Separator" ", "
+parse
+printf 'delimiter=[%s]\n' "${program_option["delimiter"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "delimiter=[, ]" ]
+}
+
+@test "option: a description is still trimmed" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--to <r>" "   Target resolution   "
+parse --help
+EOF
+	)
+	local expected
+	expected=$(printf "  %-20s %s" "--to <r>" "Target resolution")
+	run "$script"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"$expected"* ]]
+}
+
+@test "option: a whitespace-only default is still a default" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--pad <p>" "Padding" " "
+parse
+printf 'pad=[%s]\n' "${program_option["pad"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "pad=[ ]" ]
+}
+
 # ── option_type ───────────────────────────────
 
 @test "option_type/choice: valid choices shown in usage" {

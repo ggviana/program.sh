@@ -99,9 +99,10 @@ argument() {
 option() {
 	local option_flags=$1
 	local option_description
-	local option_default_value
 	option_description=$(__trim "$2")
-	option_default_value=$(__trim "$3")
+	# The description is presentation and is trimmed; the default is data and is not,
+	# so a whitespace-significant default such as ", " survives intact.
+	local option_default_value="$3"
 
 	# Derive name from the first long flag (--flag → flag), falling back to short (-f → f)
 	local option_name

@@ -166,7 +166,7 @@ option "-t, --time <seconds>"  "Time"
 |---------------|-------------|
 | `flags`       | One or more flag strings (see [Flag format](#flag-format)) |
 | `description` | Description shown in the Options section |
-| `default`     | Default value (optional) |
+| `default`     | Default value (optional). Kept verbatim — leading and trailing whitespace is preserved, so `", "` stays `", "`. The description is trimmed; the default is not. |
 
 The option name is derived automatically from the flags string: the first long flag has its `--` stripped (`--num` → `num`). For `--no-*` flags the `no-` prefix is also stripped (`--no-cheese` → `cheese`). If only a short flag is given, the `-` is stripped (`-f` → `f`). The derived name is the key used in `program_option`.
 
