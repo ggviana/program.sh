@@ -248,7 +248,7 @@ The `choice` type also annotates the usage output:
 
 ### `option_env "<flag>" "<VARIABLE>"`
 
-Declares an environment variable to fall back to when the flag is absent from the command line. Must be called after the corresponding option declaration and before `parse`.
+Declares an environment variable to fall back to when the flag is absent from the command line. Must be called after the corresponding option declaration and before `parse`, and only once per option — a second `option_env` for the same option exits 1.
 
 | Parameter  | Meaning |
 |------------|---------|
@@ -374,7 +374,7 @@ A lone `-` and negative numbers are always treated as positional arguments, with
 
 ### `depends_of "<list>"`
 
-Declares external command dependencies required by the program. Can be called multiple times — entries accumulate. Checked inside `parse`, after flags are matched; a failing check prints an error and exits 1. Like other `parse` validations, `--help` and `--generate-completions` still work even when a dependency is missing.
+Declares external command dependencies required by the program. Can be called multiple times — entries accumulate, but each command may be declared only once. A repeat exits 1 whether it appears in the same call or a later one, and whether or not the invocation differs, so `depends_of "docker"` followed by `depends_of "docker -v"` is an error. Checked inside `parse`, after flags are matched; a failing check prints an error and exits 1. Like other `parse` validations, `--help` and `--generate-completions` still work even when a dependency is missing.
 
 | Parameter | Description |
 |-----------|-------------|

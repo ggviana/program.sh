@@ -1843,6 +1843,129 @@ EOF
 	[[ "$output" == *'compgen -W "brie gouda"'* ]]
 }
 
+# ── option_env redeclaration ──────────────────
+
+@test "option_env: declaring a variable twice for one option errors" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--port <p>" "Port"
+option_env "--port" "PORT"
+option_env "--port" "OTHER"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'redeclares the variable of "--port"'* ]]
+	[[ "$output" == *'already declared as "PORT"'* ]]
+}
+
+@test "option_env: the second declaration is caught through an alias" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-p, --port <p>" "Port"
+option_env "--port" "PORT"
+option_env "-p" "OTHER"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'redeclares the variable of "--port"'* ]]
+}
+
+@test "option_env: distinct options each get a variable" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--host <h>" "Host"
+option "--port <p>" "Port"
+option_env "--host" "MYTOOL_HOST"
+option_env "--port" "MYTOOL_PORT"
+parse
+echo "host=${program_option["host"]} port=${program_option["port"]}"
+EOF
+	)
+	MYTOOL_HOST=example MYTOOL_PORT=9000 run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "host=example port=9000" ]
+}
+
+# ── depends_of redeclaration ──────────────────
+
+@test "depends_of: a command repeated in one call errors" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+depends_of "echo, echo"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'redeclares the dependency "echo"'* ]]
+}
+
+@test "depends_of: a command repeated across calls errors" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+depends_of "echo, true"
+depends_of "echo --version"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'redeclares the dependency "echo"'* ]]
+}
+
+@test "depends_of: the bare and full forms of one command collide" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+depends_of "echo"
+depends_of "echo -n"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'redeclares the dependency "echo"'* ]]
+	[[ "$output" == *'already declared by "echo"'* ]]
+}
+
+@test "depends_of: distinct commands still accumulate" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+depends_of "echo, true"
+depends_of "printf -v x y"
+parse
+echo "ok"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "ok" ]
+}
+
 # ── option_type redeclaration ─────────────────
 
 @test "option_type: declaring a type twice for one option errors" {

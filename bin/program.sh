@@ -30,6 +30,7 @@ declare -A program_option_declared=(
 )
 declare -A program_option_required
 declare -a program_dependencies
+declare -A program_dependency_declared
 
 # Sets the program name shown in the usage line.
 # Sets $program_name.
@@ -283,7 +284,7 @@ option_type() {
 
 # Declares an environment variable to fall back to when the flag is absent from the
 # command line. Must be called after the corresponding option declaration and before
-# parse(). Precedence is: command line, then environment, then the declared default.
+# parse(), and only once per option — a second declaration for the same option exits 1. Precedence is: command line, then environment, then the declared default.
 # An environment value satisfies required_option() and is checked by option_type()
 # exactly like a value passed on the command line.
 # Any flag of the option may be given — aliases resolve to the canonical name.
@@ -296,6 +297,10 @@ option_type() {
 option_env() {
 	local option_name
 	option_name=$(__resolve_option_name "$1")
+	if [ -n "${program_option_env["$option_name"]+declared}" ]; then
+		echo "Error: option_env \"$1\" redeclares the variable of \"${program_option_flag["$option_name"]:---$option_name}\", already declared as \"${program_option_env["$option_name"]}\"" >&2
+		exit 1
+	fi
 	program_option_env["$option_name"]="$2"
 }
 
@@ -375,6 +380,8 @@ allow_unknown_options() {
 
 # Declares external command dependencies required by the program. Can be called
 # multiple times; each call accepts a comma-separated list, and entries accumulate.
+# Each command may be declared only once — a repeat exits 1, whether it appears in
+# the same call or a later one, and whether or not the invocation differs.
 # Checked by parse() after flags are matched — a failing check prints an error
 # and exits 1.
 #
@@ -392,9 +399,18 @@ depends_of() {
 	local dependency
 	local -a _depends_of_items
 	IFS=',' read -ra _depends_of_items <<<"$dependencies_list"
+	local dependency_name
 	for dependency in "${_depends_of_items[@]}"; do
 		dependency=$(__trim "$dependency")
 		[ -z "$dependency" ] && continue
+		# Keyed by command name, so "docker" and "docker -v" collide: checking one
+		# command twice is redundant at best and contradictory at worst.
+		dependency_name="${dependency%% *}"
+		if [ -n "${program_dependency_declared["$dependency_name"]+declared}" ]; then
+			echo "Error: depends_of \"$dependency\" redeclares the dependency \"$dependency_name\", already declared by \"${program_dependency_declared["$dependency_name"]}\"" >&2
+			exit 1
+		fi
+		program_dependency_declared["$dependency_name"]="$dependency"
 		program_dependencies+=("$dependency")
 	done
 }
