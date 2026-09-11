@@ -570,7 +570,8 @@ usage() {
 # - Combined short flags are expanded before matching: -abc becomes -a -b -c.
 # - Unrecognised tokens are appended to $program_args (indexed) and $program_arg (named);
 #   a token that looks like a flag is an error unless allow_unknown_options() was called,
-#   and the error suggests the nearest declared flag when one is close enough.
+#   and the error suggests the nearest declared flag, with its value placeholder,
+#   when one is close enough — printed instead of the usage block, not before it.
 # - Checks depends_of() dependencies; exits 1 if a command is missing or fails.
 # - Fills options from option_env() variables before validating anything.
 # - Checks required_option() declarations; exits 1 when a required flag is absent.
@@ -585,6 +586,7 @@ parse() {
 	declare -A option_aliases # option_name → space-separated stripped flag names
 	declare -A program_flag_has_arg
 	declare -A program_flag_optional_arg
+	declare -A flag_display # flag → the flag with its value placeholder
 	declare -A program_flag_option_name
 	declare -A program_option_passed # option_name/alias → true when seen on the command line
 	IFS=';' read -ra options <<<"$program_options"
@@ -593,8 +595,15 @@ parse() {
 
 		IFS=$'\n' read -r -d ' ' -a flags <<<"$(__extract_flags "$option_flags")"
 
+		# The placeholder as written, so a suggestion can show "--to <resolution>"
+		local placeholder=""
+		if [[ "$option_flags" =~ (\<[^>]+\>|\[[^]]+\]) ]]; then
+			placeholder=" ${BASH_REMATCH[1]}"
+		fi
+
 		for flag in "${flags[@]}"; do
 			all_flags+=("$flag")
+			flag_display["$flag"]="$flag$placeholder"
 			program_flag_option_name["$flag"]="$option_name"
 			program_flag_has_arg["$flag"]=false
 			program_flag_optional_arg["$flag"]=false
@@ -709,7 +718,11 @@ parse() {
 						local _suggestion
 						_suggestion=$(printf '%s\n' "${all_flags[@]}" --help -h --version --generate-completions |
 							__suggest_flag "${inline_flag:-$arg}")
-						[ -n "$_suggestion" ] && echo "Did you mean $_suggestion?" >&2
+						if [ -n "$_suggestion" ]; then
+							# The suggestion is the answer; the full usage would bury it
+							echo "Did you mean ${flag_display["$_suggestion"]:-$_suggestion}?" >&2
+							exit 1
+						fi
 					fi
 					usage >&2
 					exit 1

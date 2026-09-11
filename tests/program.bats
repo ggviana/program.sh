@@ -1845,7 +1845,8 @@ EOF
 	run "$script"
 	[ "$status" -eq 1 ]
 	[[ "$output" == *"unknown option --tp"* ]]
-	[[ "$output" == *"Did you mean --to?"* ]]
+	[[ "$output" == *"Did you mean --to <r>?"* ]]
+	[[ "$output" != *"Usage:"* ]]
 }
 
 @test "parse: the suggestion works on the inline form" {
@@ -1860,7 +1861,7 @@ EOF
 	)
 	run "$script"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"Did you mean --to?"* ]]
+	[[ "$output" == *"Did you mean --to <r>?"* ]]
 }
 
 @test "parse: built-in flags are suggested too" {
@@ -1878,6 +1879,36 @@ EOF
 	[[ "$output" == *"Did you mean --help?"* ]]
 }
 
+@test "parse: the suggestion shows an optional-value placeholder" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--cheese [type]" "Cheese"
+parse --chese
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"Did you mean --cheese [type]?"* ]]
+}
+
+@test "parse: a boolean suggestion has no placeholder" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--verbose" "Verbose"
+parse --verbse
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"Did you mean --verbose?"* ]]
+}
+
 @test "parse: nothing is suggested when no flag is close" {
 	local script
 	script=$(
@@ -1892,6 +1923,7 @@ EOF
 	[ "$status" -eq 1 ]
 	[[ "$output" == *"unknown option --zzzzzzz"* ]]
 	[[ "$output" != *"Did you mean"* ]]
+	[[ "$output" == *"Usage:"* ]]
 }
 
 @test "parse: short tokens are too ambiguous to suggest for" {
