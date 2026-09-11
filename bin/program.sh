@@ -8,6 +8,7 @@ program_options=""
 program_args_name=""
 program_args_description=""
 program_version=""
+program_allow_unknown_options=false
 # shellcheck disable=SC2034
 declare -A program_arg
 declare -a program_args
@@ -286,6 +287,20 @@ required_option() {
 	program_option_required["$option_name"]=true
 }
 
+# Lets unrecognised flags through as positional arguments instead of failing.
+# Without it, parse() exits 1 on any token that looks like a flag but matches no
+# declaration. Call it when the script forwards flags to another command.
+#
+# Usage: allow_unknown_options
+#
+# Example:
+#   argument "<command>" "Command to run"
+#   allow_unknown_options
+#   parse "$@"        # "each ls -la" keeps -la in program_args
+allow_unknown_options() {
+	program_allow_unknown_options=true
+}
+
 # Declares external command dependencies required by the program. Can be called
 # multiple times; each call accepts a comma-separated list, and entries accumulate.
 # Checked by parse() after flags are matched — a failing check prints an error
@@ -463,7 +478,8 @@ usage() {
 # - Handles --version: prints the declared version, or the script's mtime, exits 0.
 # - Matched flags store their value in $program_option["name"] and all aliases.
 #   Value-accepting flags consume the next token; boolean flags store "true".
-# - Unrecognised tokens are appended to $program_args (indexed) and $program_arg (named).
+# - Unrecognised tokens are appended to $program_args (indexed) and $program_arg (named);
+#   a token that looks like a flag is an error unless allow_unknown_options() was called.
 # - Checks depends_of() dependencies; exits 1 if a command is missing or fails.
 # - Fills options from option_env() variables before validating anything.
 # - Checks required_option() declarations; exits 1 when a required flag is absent.
@@ -554,6 +570,18 @@ parse() {
 				matched=true
 			done
 			if [ "$matched" = false ]; then
+				# A token that looks like a flag but matches nothing is a mistake, not a
+				# positional. A lone "-" and negative numbers stay arguments.
+				if [ "$program_allow_unknown_options" = false ] && [[ "$arg" == -?* ]] &&
+					! [[ "$arg" =~ ^-[0-9]+([.][0-9]+)?$ ]]; then
+					if [ -n "$inline_flag" ] && [ -n "${program_flag_has_arg["$inline_flag"]+declared}" ]; then
+						echo "Error: option $inline_flag does not take a value" >&2
+					else
+						echo "Error: unknown option $arg" >&2
+					fi
+					usage >&2
+					exit 1
+				fi
 				program_args+=("$arg")
 				((program_args_count++))
 			fi

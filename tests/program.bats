@@ -471,7 +471,7 @@ EOF
 	[[ "$output" == *"Usage:"* ]]
 }
 
-@test "parse: unknown flags do not crash" {
+@test "parse: unknown flags fail cleanly rather than crashing" {
 	local script
 	script=$(
 		make_script <<'EOF'
@@ -482,9 +482,12 @@ parse --unknown-flag
 echo "survived"
 EOF
 	)
-	run "$script"
-	[ "$status" -eq 0 ]
-	[[ "$output" == *"survived"* ]]
+	run bash -c "\"$script\" 2>&1"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"unknown option --unknown-flag"* ]]
+	[[ "$output" != *"survived"* ]]
+	[[ "$output" != *"unary operator expected"* ]]
+	[[ "$output" != *"syntax error"* ]]
 }
 
 @test "parse: exits with error when mandatory argument is missing" {
@@ -700,13 +703,29 @@ EOF
 	[[ "$output" == *'invalid value for --to: "999"'* ]]
 }
 
-@test "parse: boolean flags ignore the =value form" {
+@test "parse: boolean flags reject the =value form" {
 	local script
 	script=$(
 		make_script <<'EOF'
 name "mytool"
 description "does stuff"
 option "--remove-original, --rm" "Remove original"
+parse --rm=x
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"option --rm does not take a value"* ]]
+}
+
+@test "parse: boolean flags keep the =value form as an argument when unknown options are allowed" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--remove-original, --rm" "Remove original"
+allow_unknown_options
 parse --rm=x
 echo "rm=[${program_option["remove-original"]}] args=${program_args[*]}"
 EOF
@@ -1021,6 +1040,105 @@ EOF
 	run "$script"
 	[ "$status" -eq 1 ]
 	[[ "$output" == *"defaults to true"* ]]
+}
+
+# ── unknown options ───────────────────────────
+
+@test "parse: an unknown long flag is an error" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+argument "<file>" "File"
+option "--to <r>" "To"
+parse --typo x.txt
+echo "unreachable"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"unknown option --typo"* ]]
+	[[ "$output" != *"unreachable"* ]]
+}
+
+@test "parse: an unknown short flag is an error" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--to <r>" "To"
+parse -x
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"unknown option -x"* ]]
+}
+
+@test "parse: a lone dash stays a positional argument" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+parse -
+echo "args=${program_args[*]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "args=-" ]
+}
+
+@test "parse: negative numbers stay positional arguments" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+parse -5 -3.14
+echo "args=${program_args[*]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "args=-5 -3.14" ]
+}
+
+@test "allow_unknown_options: unknown flags become positional arguments" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+argument "<command>" "Command"
+allow_unknown_options
+parse ls -la
+echo "args=${program_args[*]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "args=ls -la" ]
+}
+
+@test "allow_unknown_options: declared flags still parse normally" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--to <r>" "To"
+allow_unknown_options
+parse --to 720 --other x
+echo "to=${program_option["to"]} args=${program_args[*]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "to=720 args=--other x" ]
 }
 
 # ── version ───────────────────────────────────

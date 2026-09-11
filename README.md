@@ -313,6 +313,31 @@ It also annotates the usage output:
 
 ---
 
+### `allow_unknown_options`
+
+Lets unrecognised flags through as positional arguments instead of failing. Must be called before `parse`.
+
+By default an argument that looks like a flag but matches no declaration exits 1 — without this, a typo silently becomes a positional argument:
+
+```bash
+option "--to <resolution>" "Target resolution"
+parse "$@"
+# script --tp 720 file.mp4  → Error: unknown option --tp
+```
+
+Call it when the script forwards flags to another command, where unrecognised flags are the point:
+
+```bash
+argument "<command>" "Command to run"
+allow_unknown_options
+parse "$@"
+# each ls -la   → program_args=(ls -la)
+```
+
+A lone `-` and negative numbers are always treated as positional arguments, with or without it.
+
+---
+
 ### `depends_of "<list>"`
 
 Declares external command dependencies required by the program. Can be called multiple times — entries accumulate. Checked inside `parse`, after flags are matched; a failing check prints an error and exits 1. Like other `parse` validations, `--help` and `--generate-completions` still work even when a dependency is missing.
@@ -394,8 +419,9 @@ Parses the script's arguments. Must be called after all `option` and `argument` 
 - Handles `--generate-completions` automatically: prints a bash completion script and exits 0.
 - Handles `--version` automatically: prints the declared version, or the script's modification time, and exits 0.
 - For each matched flag, stores its value in `program_option["<name>"]`. Value-accepting flags consume the next token; boolean flags store `true`.
-- Value-accepting flags also accept the inline form `--flag=value` (split on the first `=`, so `--set=a=b` yields `a=b`). Boolean flags do not: `--rm=x` is left as a positional arg.
+- Value-accepting flags also accept the inline form `--flag=value` (split on the first `=`, so `--set=a=b` yields `a=b`). Boolean flags do not: `--rm=x` exits 1 with `option --rm does not take a value`.
 - Unrecognised tokens are collected as positional args into `program_args` (indexed) and `program_arg` (named, if `argument` was declared).
+- An unrecognised token that looks like a flag exits 1 with `unknown option <flag>`, unless `allow_unknown_options` was called. A lone `-` and negative numbers (`-5`, `-3.14`) stay positional.
 - Fills options from their `option_env` variables before validating anything.
 - If a `required_option` flag is absent, prints an error to stderr and exits 1.
 - If a mandatory argument (no default) is missing, prints an error to stderr and exits 1.
