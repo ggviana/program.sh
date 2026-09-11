@@ -1483,6 +1483,86 @@ EOF
 	[[ "$output" == *'required_option "--to <resolution>" redeclares'* ]]
 }
 
+# ── did you mean ──────────────────────────────
+
+@test "parse: an unknown option suggests the nearest declared flag" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--to <r>" "Target"
+parse --tp 720
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"unknown option --tp"* ]]
+	[[ "$output" == *"Did you mean --to?"* ]]
+}
+
+@test "parse: the suggestion works on the inline form" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--to <r>" "Target"
+parse --tp=720
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"Did you mean --to?"* ]]
+}
+
+@test "parse: built-in flags are suggested too" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--to <r>" "Target"
+parse --hepl
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"Did you mean --help?"* ]]
+}
+
+@test "parse: nothing is suggested when no flag is close" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--to <r>" "Target"
+parse --zzzzzzz
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"unknown option --zzzzzzz"* ]]
+	[[ "$output" != *"Did you mean"* ]]
+}
+
+@test "parse: short tokens are too ambiguous to suggest for" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-t, --to <r>" "Target"
+parse -x
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"unknown option -x"* ]]
+	[[ "$output" != *"Did you mean"* ]]
+}
+
 # ── optional option values ────────────────────
 
 @test "option: [value] with no value after it stores true" {

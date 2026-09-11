@@ -157,6 +157,35 @@ option() {
 	done
 }
 
+# Prints the declared flag closest to an unrecognised one, when the two are close
+# enough that a typo is the likely explanation. Candidates are read from stdin, one
+# per line. Prints nothing when the token is too short to guess at or nothing is near.
+__suggest_flag() {
+	local unknown="$1"
+	[ "${#unknown}" -ge 4 ] || return 0
+	awk -v a="$unknown" '
+		function lev(s, t,   ls, lt, i, j, c, m, d) {
+			ls = length(s); lt = length(t)
+			for (i = 0; i <= ls; i++) d[i, 0] = i
+			for (j = 0; j <= lt; j++) d[0, j] = j
+			for (i = 1; i <= ls; i++)
+				for (j = 1; j <= lt; j++) {
+					c = (substr(s, i, 1) == substr(t, j, 1)) ? 0 : 1
+					m = d[i - 1, j] + 1
+					if (d[i, j - 1] + 1 < m) m = d[i, j - 1] + 1
+					if (d[i - 1, j - 1] + c < m) m = d[i - 1, j - 1] + c
+					d[i, j] = m
+				}
+			return d[ls, lt]
+		}
+		NF {
+			dist = lev(a, $0)
+			if (best == "" || dist < best) { best = dist; cand = $0 }
+		}
+		END { if (best != "" && best <= 2) print cand }
+	'
+}
+
 # True when a token reads as a flag rather than as data: it starts with a dash, is
 # not a lone "-", and is not a negative number. Both of those are ordinary arguments.
 __looks_like_flag() {
@@ -495,7 +524,8 @@ usage() {
 # - Matched flags store their value in $program_option["name"] and all aliases.
 #   Value-accepting flags consume the next token; boolean flags store "true".
 # - Unrecognised tokens are appended to $program_args (indexed) and $program_arg (named);
-#   a token that looks like a flag is an error unless allow_unknown_options() was called.
+#   a token that looks like a flag is an error unless allow_unknown_options() was called,
+#   and the error suggests the nearest declared flag when one is close enough.
 # - Checks depends_of() dependencies; exits 1 if a command is missing or fails.
 # - Fills options from option_env() variables before validating anything.
 # - Checks required_option() declarations; exits 1 when a required flag is absent.
@@ -606,6 +636,10 @@ parse() {
 						echo "Error: option $inline_flag does not take a value" >&2
 					else
 						echo "Error: unknown option $arg" >&2
+						local _suggestion
+						_suggestion=$(printf '%s\n' "${all_flags[@]}" --help -h --version --generate-completions |
+							__suggest_flag "${inline_flag:-$arg}")
+						[ -n "$_suggestion" ] && echo "Did you mean $_suggestion?" >&2
 					fi
 					usage >&2
 					exit 1

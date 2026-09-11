@@ -423,6 +423,12 @@ Parses the script's arguments. Must be called after all `option` and `argument` 
 - Value-accepting flags also accept the inline form `--flag=value` (split on the first `=`, so `--set=a=b` yields `a=b`). Boolean flags do not: `--rm=x` exits 1 with `option --rm does not take a value`.
 - Unrecognised tokens are collected as positional args into `program_args` (indexed) and `program_arg` (named, if `argument` was declared).
 - An unrecognised token that looks like a flag exits 1 with `unknown option <flag>`, unless `allow_unknown_options` was called. A lone `-` and negative numbers (`-5`, `-3.14`) stay positional.
+- The error suggests the nearest declared flag — including the built-ins — when one is within an edit distance of 2. Tokens shorter than four characters are too ambiguous to guess at, and get no suggestion:
+
+  ```
+  Error: unknown option --tp
+  Did you mean --to?
+  ```
 - Fills options from their `option_env` variables before validating anything.
 - If a `required_option` flag is absent, prints an error to stderr and exits 1.
 - If a mandatory argument (no default) is missing, prints an error to stderr and exits 1.
