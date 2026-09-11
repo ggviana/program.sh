@@ -1483,6 +1483,170 @@ EOF
 	[[ "$output" == *'required_option "--to <resolution>" redeclares'* ]]
 }
 
+# ── option_validator ──────────────────────────
+
+@test "option_validator: stdout replaces the stored value" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--env <name>" "Environment"
+to_upper() { echo "${1^^}"; }
+option_validator "--env" to_upper
+parse --env staging
+echo "env=${program_option["env"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "env=STAGING" ]
+}
+
+@test "option_validator: the coerced value reaches every alias" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-e, --env <name>" "Environment"
+to_upper() { echo "${1^^}"; }
+option_validator "--env" to_upper
+parse -e staging
+echo "env=${program_option["env"]} e=${program_option["e"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "env=STAGING e=STAGING" ]
+}
+
+@test "option_validator: a non-zero return rejects the value" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--port <p>" "Port"
+even_only() { (( $1 % 2 == 0 )) || return 1; echo "$1"; }
+option_validator "--port" even_only
+parse --port 8081
+echo "unreachable"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'invalid value for --port: "8081"'* ]]
+	[[ "$output" != *"unreachable"* ]]
+}
+
+@test "option_validator: the function's own message is kept" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--port <p>" "Port"
+even_only() { echo "port must be even" >&2; return 1; }
+option_validator "--port" even_only
+parse --port 8081
+EOF
+	)
+	run bash -c "\"$script\" 2>&1"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"port must be even"* ]]
+	[[ "$output" == *'invalid value for --port'* ]]
+}
+
+@test "option_validator: option_type runs first" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--port <p>" "Port"
+option_type "--port" integer
+never() { echo "validator ran" >&2; return 1; }
+option_validator "--port" never
+parse --port abc
+EOF
+	)
+	run bash -c "\"$script\" 2>&1"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"expects an integer"* ]]
+	[[ "$output" != *"validator ran"* ]]
+}
+
+@test "option_validator: an unset option is not validated" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--port <p>" "Port"
+never() { return 1; }
+option_validator "--port" never
+parse
+echo "ok"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "ok" ]
+}
+
+@test "option_validator: a default value is validated" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--env <name>" "Environment" "staging"
+to_upper() { echo "${1^^}"; }
+option_validator "--env" to_upper
+parse
+echo "env=${program_option["env"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "env=STAGING" ]
+}
+
+@test "option_validator: an undefined function is reported" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--x <v>" "X"
+option_validator "--x" nope
+parse --x 1
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'names an undefined function "nope"'* ]]
+}
+
+@test "option_validator: declaring one twice errors" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--x <v>" "X"
+keep() { echo "$1"; }
+option_validator "--x" keep
+option_validator "--x" keep
+parse --x 1
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"redeclares the validator"* ]]
+}
+
 # ── did you mean ──────────────────────────────
 
 @test "parse: an unknown option suggests the nearest declared flag" {

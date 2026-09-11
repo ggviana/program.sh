@@ -275,6 +275,40 @@ It also annotates the usage output:
 
 ---
 
+### `option_validator "<flag>" <function>`
+
+Declares a function to validate, and optionally transform, an option's value. Must be called after the corresponding `option` declaration and before `parse`.
+
+| Parameter  | Meaning |
+|------------|---------|
+| `flag`     | The flag to validate (e.g. `--env`). Any flag of the option works — aliases resolve to the canonical option name. |
+| `function` | Name of a shell function taking the value as its only argument |
+
+The function is called with the value as `$1`. Whatever it prints on stdout **replaces the stored value**, so it coerces as well as checks; returning non-zero rejects the value and exits 1. It may write its own explanation to stderr first, which appears above the generic error.
+
+It runs after the built-in `option_type` check, so both can apply to one option, and like `option_type` it is skipped when the value is empty. Declared defaults and values from `option_env` go through it too.
+
+```bash
+to_upper() { echo "${1^^}"; }
+option "--env <name>" "Environment"
+option_validator "--env" to_upper
+# script --env staging  → program_option["env"] is "STAGING"
+
+even_only() {
+    (( $1 % 2 == 0 )) || { echo "port must be even" >&2; return 1; }
+    echo "$1"
+}
+option "--port <p>" "Port"
+option_validator "--port" even_only
+# script --port 8081
+# → port must be even
+# → Error: invalid value for --port: "8081"
+```
+
+Naming a function that does not exist at `parse` time exits 1 with a specific message rather than failing as an invalid value, and declaring two validators for one option is rejected like any other redeclaration.
+
+---
+
 ### `required_option "<flags>" "<description>"`
 
 Declares a required option. Stands in for `option` rather than accompanying it — same flags string, same description, and the option is registered identically, with the addition that `parse` prints an error and exits 1 when the flag is absent. That is the same failure shape as an unsatisfied `option_type`, and as with the other `parse` validations, `--help` and `--generate-completions` still work.
@@ -431,6 +465,7 @@ Parses the script's arguments. Must be called after all `option` and `argument` 
   ```
 - Fills options from their `option_env` variables before validating anything.
 - If a `required_option` flag is absent, prints an error to stderr and exits 1.
+- Runs any `option_validator` functions, storing what they print; exits 1 on a non-zero return.
 - If a mandatory argument (no default) is missing, prints an error to stderr and exits 1.
 
 ```bash

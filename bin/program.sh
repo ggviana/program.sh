@@ -19,6 +19,7 @@ declare -A program_option_type
 declare -A program_option_choices
 declare -A program_option_flag
 declare -A program_option_env
+declare -A program_option_validator
 # Built-in flags are pre-registered so a script that declares one of them gets the
 # same redeclaration error as any other collision, instead of being shadowed.
 declare -A program_option_declared=(
@@ -298,6 +299,32 @@ option_env() {
 	program_option_env["$option_name"]="$2"
 }
 
+# Declares a function to validate, and optionally transform, an option's value.
+# Must be called after the corresponding option declaration and before parse().
+# Any flag of the option may be given — aliases resolve to the canonical name.
+#
+# The function is called with the value as its only argument. Whatever it prints on
+# stdout replaces the stored value, so it can coerce as well as check; returning
+# non-zero rejects the value and exits 1. It may write its own explanation to
+# stderr first. Like option_type(), it is skipped when the value is empty, and it
+# runs after the built-in type check so both can apply to one option.
+#
+# Usage: option_validator "<flag>" <function>
+#
+# Example:
+#   to_upper() { echo "${1^^}"; }
+#   option "--env <name>" "Environment"
+#   option_validator "--env" to_upper
+option_validator() {
+	local option_name
+	option_name=$(__resolve_option_name "$1")
+	if [ -n "${program_option_validator["$option_name"]+declared}" ]; then
+		echo "Error: option_validator \"$1\" redeclares the validator of \"${program_option_flag["$option_name"]:---$option_name}\"" >&2
+		exit 1
+	fi
+	program_option_validator["$option_name"]="$2"
+}
+
 # Declares a required option. Stands in for option() — it takes the same flags and
 # description, registers the option identically, and additionally marks it required.
 # parse() prints an error and exits 1 when the flag is absent, the same way an
@@ -530,6 +557,8 @@ usage() {
 # - Fills options from option_env() variables before validating anything.
 # - Checks required_option() declarations; exits 1 when a required flag is absent.
 # - Validates option_choices constraints; exits 1 on invalid value.
+# - Runs option_validator() functions, storing whatever they print; exits 1 on
+#   a non-zero return.
 # - If a mandatory argument is missing, prints an error and exits 1.
 #
 # Usage: parse "$@"
@@ -761,6 +790,28 @@ parse() {
 			fi
 			;;
 		esac
+	done
+
+	# Custom validators, after the built-in type checks so both apply
+	local _val_name _val_value _val_flag _val_fn _val_out _val_alias
+	for _val_name in "${!program_option_validator[@]}"; do
+		_val_value="${program_option["$_val_name"]}"
+		[ -z "$_val_value" ] && continue
+		_val_flag="${program_option_flag["$_val_name"]:---$_val_name}"
+		_val_fn="${program_option_validator["$_val_name"]}"
+		if ! declare -F "$_val_fn" >/dev/null; then
+			echo "Error: option_validator for $_val_flag names an undefined function \"$_val_fn\"" >&2
+			exit 1
+		fi
+		if ! _val_out=$("$_val_fn" "$_val_value"); then
+			echo "Error: invalid value for $_val_flag: \"$_val_value\"" >&2
+			usage >&2
+			exit 1
+		fi
+		program_option["$_val_name"]="$_val_out"
+		for _val_alias in ${option_aliases["$_val_name"]}; do
+			program_option["$_val_alias"]="$_val_out"
+		done
 	done
 
 	if [ "$program_has_args" = true ] &&
