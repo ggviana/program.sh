@@ -1647,6 +1647,166 @@ EOF
 	[[ "$output" == *"redeclares the validator"* ]]
 }
 
+# ── end of options ────────────────────────────
+
+@test "parse: -- stops flags from being interpreted" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-a, --all" "All"
+parse -- --all x.txt
+echo "all=[${program_option["all"]}] args=${program_args[*]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "all=[] args=--all x.txt" ]
+}
+
+@test "parse: flags before -- still parse" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-a, --all" "All"
+option "-n, --num <n>" "Num"
+parse --all -n 3 -- ls -la
+echo "all=${program_option["all"]} num=${program_option["num"]} args=${program_args[*]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "all=true num=3 args=ls -la" ]
+}
+
+@test "parse: -- is consumed, not kept as an argument" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+parse -- a b
+echo "args=${program_args[*]} count=$program_args_count"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "args=a b count=2" ]
+}
+
+@test "parse: a dash-leading filename survives --" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+argument "<file>" "File"
+parse -- -report.txt
+echo "file=${program_arg["file"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "file=-report.txt" ]
+}
+
+@test "parse: an unknown option after -- is not an error" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--to <r>" "Target"
+parse -- --typo
+echo "args=${program_args[*]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "args=--typo" ]
+}
+
+@test "parse: a second -- is an ordinary argument" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+parse -- a -- b
+echo "args=${program_args[*]} count=$program_args_count"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "args=a -- b count=3" ]
+}
+
+@test "parse: short flag groups are not expanded after --" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-a, --all" "All"
+option "-b, --bold" "Bold"
+parse -- -ab
+echo "all=[${program_option["all"]}] args=${program_args[*]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "all=[] args=-ab" ]
+}
+
+@test "parse: -- alone leaves no arguments" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+parse --
+echo "count=$program_args_count"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "count=0" ]
+}
+
+@test "parse: --help after -- is data, not a request for help" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+parse -- --help
+echo "args=${program_args[*]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "args=--help" ]
+}
+
+@test "parse: an argument after -- satisfies a mandatory argument" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+argument "<file>" "File"
+parse -- -x
+echo "file=${program_arg["file"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "file=-x" ]
+}
+
 # ── combined short flags ──────────────────────
 
 @test "parse: -ab sets both boolean flags" {

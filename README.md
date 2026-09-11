@@ -347,6 +347,30 @@ It also annotates the usage output:
 
 ---
 
+### End of options (`--`)
+
+A bare `--` tells `parse` to stop interpreting: everything after it is data, whatever it looks like. This is the POSIX convention every standard tool follows (`rm --`, `git checkout --`, `grep --`), and it needs no declaration — it always works.
+
+```bash
+option "-a, --all" "All"
+argument "<file>" "File"
+
+# script -- -report.txt   → program_arg["file"] is "-report.txt", not an unknown option
+# script --all -- ls -la  → --all is set; program_args is (ls -la)
+# script -- --all x       → --all is an argument, not a flag
+```
+
+It solves the same problem as [`allow_unknown_options`](#allow_unknown_options) from the other end, and the difference matters:
+
+| | Decided by | Scope |
+|---|---|---|
+| `allow_unknown_options` | the script author, once | every invocation, every token |
+| `--` | the caller, per invocation | only what follows the separator |
+
+So a script that forwards flags can keep strict checking for its own options and still pass anything through: `each --strict -- ls -la` catches a typo in `--strict` while handing `-la` to `ls` untouched. `allow_unknown_options` cannot make that distinction, because it gives up the check entirely.
+
+---
+
 ### `allow_unknown_options`
 
 Lets unrecognised flags through as positional arguments instead of failing. Must be called before `parse`.
@@ -372,7 +396,7 @@ parse "$@"
 # each ls -la   → program_args=(ls -la)
 ```
 
-A lone `-` and negative numbers are always treated as positional arguments, with or without it.
+A lone `-` and negative numbers are always treated as positional arguments, with or without it. For a per-invocation escape rather than a blanket one, see [end of options](#end-of-options---).
 
 ---
 
@@ -457,6 +481,7 @@ Parses the script's arguments. Must be called after all `option` and `argument` 
 - Handles `--generate-completions` automatically: prints a bash completion script and exits 0.
 - Handles `--version` automatically: prints the declared version, or the script's modification time, and exits 0.
 - For each matched flag, stores its value in `program_option["<name>"]`. Value-accepting flags consume the next token; boolean flags store `true`.
+- A bare `--` ends option parsing. It is consumed, and every token after it becomes a positional argument verbatim — no flag matching, no short-flag expansion, no unknown-option check. A second `--` is an ordinary argument.
 - Combined short flags are expanded before matching, so `-abc` is `-a -b -c`. A value-accepting flag in the group takes the rest of the token (`-n5`), or the next argument when the token ends (`-an 5`). Expansion is only attempted when the leading character is a declared short flag and the whole token is not itself one, so forwarded tokens like `ls -la` and negative numbers are left alone.
 - A flag declared with `[value]` takes an *optional* value: it consumes the next token only when that token is data, and stores `true` when the flag is passed bare or followed by another flag. Because it cannot tell an intended value from the next positional argument, declare such flags so they are not followed by positionals — `--cheese pizza.txt` stores `pizza.txt` as the cheese.
 - Value-accepting flags also accept the inline form `--flag=value` (split on the first `=`, so `--set=a=b` yields `a=b`). Boolean flags do not: `--rm=x` exits 1 with `option --rm does not take a value`.

@@ -574,6 +574,8 @@ usage() {
 # - Handles --version: prints the declared version, or the script's mtime, exits 0.
 # - Matched flags store their value in $program_option["name"] and all aliases.
 #   Value-accepting flags consume the next token; boolean flags store "true".
+# - Handles "--": consumes it and takes every remaining token as a positional
+#   argument, with no flag matching, expansion or unknown-option checking.
 # - Combined short flags are expanded before matching: -abc becomes -a -b -c.
 # - Unrecognised tokens are appended to $program_args (indexed) and $program_arg (named);
 #   a token that looks like a flag is an error unless allow_unknown_options() was called.
@@ -641,6 +643,15 @@ parse() {
 		--generate-completions)
 			generate_completions
 			exit 0
+			;;
+		--)
+			# End of options: everything after this is data, whatever it looks like.
+			# The separator itself is consumed; a later "--" is an ordinary argument.
+			while [ "$#" -gt 0 ]; do
+				program_args+=("$1")
+				((program_args_count++))
+				shift
+			done
 			;;
 		*)
 			# -abc is shorthand for -a -b -c. A value-accepting flag in the group takes
