@@ -484,7 +484,7 @@ EOF
 	)
 	run bash -c "\"$script\" 2>&1"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"unknown option --unknown-flag"* ]]
+	[[ "$output" == *"'--unknown-flag' is not a mytool option"* ]]
 	[[ "$output" != *"survived"* ]]
 	[[ "$output" != *"unary operator expected"* ]]
 	[[ "$output" != *"syntax error"* ]]
@@ -1058,7 +1058,7 @@ EOF
 	)
 	run "$script"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"unknown option --typo"* ]]
+	[[ "$output" == *"'--typo' is not a mytool option"* ]]
 	[[ "$output" != *"unreachable"* ]]
 }
 
@@ -1074,7 +1074,7 @@ EOF
 	)
 	run "$script"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"unknown option -x"* ]]
+	[[ "$output" == *"'-x' is not a mytool option"* ]]
 }
 
 @test "parse: a lone dash stays a positional argument" {
@@ -1763,7 +1763,7 @@ EOF
 	)
 	run "$script"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"unknown option -x"* ]]
+	[[ "$output" == *"'-x' is not a mytool option"* ]]
 }
 
 @test "parse: a group whose first flag is undeclared is left whole" {
@@ -1778,7 +1778,7 @@ EOF
 	)
 	run "$script"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"unknown option -xa"* ]]
+	[[ "$output" == *"'-xa' is not a mytool option"* ]]
 }
 
 @test "parse: a declared multi-character short flag is not expanded" {
@@ -1844,8 +1844,9 @@ EOF
 	)
 	run "$script"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"unknown option --tp"* ]]
-	[[ "$output" == *"Did you mean --to <r>?"* ]]
+	[[ "$output" == *"mytool: '--tp' is not a mytool option. See 'mytool --help'."* ]]
+	[[ "$output" == *"The most similar option is"* ]]
+	[[ "$output" == *$'\t--to <r>' ]]
 	[[ "$output" != *"Usage:"* ]]
 }
 
@@ -1861,7 +1862,8 @@ EOF
 	)
 	run "$script"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"Did you mean --to <r>?"* ]]
+	[[ "$output" == *"'--tp=720' is not a mytool option"* ]]
+	[[ "$output" == *$'\t--to <r>' ]]
 }
 
 @test "parse: built-in flags are suggested too" {
@@ -1876,7 +1878,7 @@ EOF
 	)
 	run "$script"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"Did you mean --help?"* ]]
+	[[ "$output" == *$'\t--help' ]]
 }
 
 @test "parse: the suggestion shows an optional-value placeholder" {
@@ -1891,7 +1893,7 @@ EOF
 	)
 	run "$script"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"Did you mean --cheese [type]?"* ]]
+	[[ "$output" == *$'\t--cheese [type]' ]]
 }
 
 @test "parse: a boolean suggestion has no placeholder" {
@@ -1906,7 +1908,25 @@ EOF
 	)
 	run "$script"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"Did you mean --verbose?"* ]]
+	[[ "$output" == *$'\t--verbose' ]]
+}
+
+@test "parse: equally close flags are all listed, in the plural" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--remove" "Remove"
+option "--remote <url>" "Remote"
+parse --remoe
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"The most similar options are"* ]]
+	[[ "$output" == *$'\t--remove\n'* ]]
+	[[ "$output" == *$'\t--remote <url>' ]]
 }
 
 @test "parse: nothing is suggested when no flag is close" {
@@ -1921,9 +1941,8 @@ EOF
 	)
 	run "$script"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"unknown option --zzzzzzz"* ]]
-	[[ "$output" != *"Did you mean"* ]]
-	[[ "$output" == *"Usage:"* ]]
+	[[ "$output" == *"'--zzzzzzz' is not a mytool option"* ]]
+	[[ "$output" != *"The most similar"* ]]
 }
 
 @test "parse: short tokens are too ambiguous to suggest for" {
@@ -1938,8 +1957,8 @@ EOF
 	)
 	run "$script"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"unknown option -x"* ]]
-	[[ "$output" != *"Did you mean"* ]]
+	[[ "$output" == *"'-x' is not a mytool option"* ]]
+	[[ "$output" != *"The most similar"* ]]
 }
 
 # ── optional option values ────────────────────

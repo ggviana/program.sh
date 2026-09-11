@@ -356,7 +356,11 @@ By default an argument that looks like a flag but matches no declaration exits 1
 ```bash
 option "--to <resolution>" "Target resolution"
 parse "$@"
-# script --tp 720 file.mp4  → Error: unknown option --tp
+# script --tp 720 file.mp4
+# → script: '--tp' is not a script option. See 'script --help'.
+# →
+# → The most similar option is
+# → 	--to <resolution>
 ```
 
 Call it when the script forwards flags to another command, where unrecognised flags are the point:
@@ -457,13 +461,17 @@ Parses the script's arguments. Must be called after all `option` and `argument` 
 - A flag declared with `[value]` takes an *optional* value: it consumes the next token only when that token is data, and stores `true` when the flag is passed bare or followed by another flag. Because it cannot tell an intended value from the next positional argument, declare such flags so they are not followed by positionals — `--cheese pizza.txt` stores `pizza.txt` as the cheese.
 - Value-accepting flags also accept the inline form `--flag=value` (split on the first `=`, so `--set=a=b` yields `a=b`). Boolean flags do not: `--rm=x` exits 1 with `option --rm does not take a value`.
 - Unrecognised tokens are collected as positional args into `program_args` (indexed) and `program_arg` (named, if `argument` was declared).
-- An unrecognised token that looks like a flag exits 1 with `unknown option <flag>`, unless `allow_unknown_options` was called. A lone `-` and negative numbers (`-5`, `-3.14`) stay positional.
-- The error suggests the nearest declared flag — including the built-ins — when one is within an edit distance of 2, showing it with its value placeholder. The suggestion answers the question, so it replaces the usage block rather than preceding it. Tokens shorter than four characters are too ambiguous to guess at, and fall back to printing usage:
+- An unrecognised token that looks like a flag exits 1, unless `allow_unknown_options` was called. A lone `-` and negative numbers (`-5`, `-3.14`) stay positional.
+- The error follows git's shape: it names the program, points at `--help`, and lists the nearest declared flags — built-ins included — with their value placeholders. Every flag at the winning edit distance is listed, so the heading is singular or plural to match:
 
   ```
-  Error: unknown option --tp
-  Did you mean --to <resolution>?
+  video-converter: '--tp' is not a video-converter option. See 'video-converter --help'.
+
+  The most similar option is
+  	--to <resolution>
   ```
+
+  Candidates must be within an edit distance of 2, and tokens shorter than four characters are too ambiguous to guess at. With nothing close, only the first line is printed — it already says where to look, so the usage block is not repeated underneath.
 - Fills options from their `option_env` variables before validating anything.
 - If a `required_option` flag is absent, prints an error to stderr and exits 1.
 - Runs any `option_validator` functions, storing what they print; exits 1 on a non-zero return.

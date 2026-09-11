@@ -160,9 +160,10 @@ option() {
 	done
 }
 
-# Prints the declared flag closest to an unrecognised one, when the two are close
+# Prints the declared flags closest to an unrecognised one, when they are close
 # enough that a typo is the likely explanation. Candidates are read from stdin, one
-# per line. Prints nothing when the token is too short to guess at or nothing is near.
+# per line, and every candidate at the winning distance is printed in declaration
+# order. Prints nothing when the token is too short to guess at or nothing is near.
 __suggest_flag() {
 	local unknown="$1"
 	[ "${#unknown}" -ge 4 ] || return 0
@@ -182,10 +183,16 @@ __suggest_flag() {
 			return d[ls, lt]
 		}
 		NF {
-			dist = lev(a, $0)
-			if (best == "" || dist < best) { best = dist; cand = $0 }
+			n++
+			cand[n] = $0
+			dist[n] = lev(a, $0)
+			if (best == "" || dist[n] < best) best = dist[n]
 		}
-		END { if (best != "" && best <= 2) print cand }
+		END {
+			if (best == "" || best > 2) exit
+			for (i = 1; i <= n; i++)
+				if (dist[i] == best) print cand[i]
+		}
 	'
 }
 
@@ -569,9 +576,9 @@ usage() {
 #   Value-accepting flags consume the next token; boolean flags store "true".
 # - Combined short flags are expanded before matching: -abc becomes -a -b -c.
 # - Unrecognised tokens are appended to $program_args (indexed) and $program_arg (named);
-#   a token that looks like a flag is an error unless allow_unknown_options() was called,
-#   and the error suggests the nearest declared flag, with its value placeholder,
-#   when one is close enough — printed instead of the usage block, not before it.
+#   a token that looks like a flag is an error unless allow_unknown_options() was called.
+#   The error names the program and points at --help, then lists the nearest declared
+#   flags with their value placeholders when any are close enough.
 # - Checks depends_of() dependencies; exits 1 if a command is missing or fails.
 # - Fills options from option_env() variables before validating anything.
 # - Checks required_option() declarations; exits 1 when a required flag is absent.
@@ -713,18 +720,27 @@ parse() {
 				if [ "$program_allow_unknown_options" = false ] && __looks_like_flag "$arg"; then
 					if [ -n "$inline_flag" ] && [ -n "${program_flag_has_arg["$inline_flag"]+declared}" ]; then
 						echo "Error: option $inline_flag does not take a value" >&2
-					else
-						echo "Error: unknown option $arg" >&2
-						local _suggestion
-						_suggestion=$(printf '%s\n' "${all_flags[@]}" --help -h --version --generate-completions |
-							__suggest_flag "${inline_flag:-$arg}")
-						if [ -n "$_suggestion" ]; then
-							# The suggestion is the answer; the full usage would bury it
-							echo "Did you mean ${flag_display["$_suggestion"]:-$_suggestion}?" >&2
-							exit 1
-						fi
+						usage >&2
+						exit 1
 					fi
-					usage >&2
+
+					local _prog="${program_name:-$(basename "$0")}"
+					echo "$_prog: '$arg' is not a $_prog option. See '$_prog --help'." >&2
+
+					local _suggestions _suggestion
+					_suggestions=$(printf '%s\n' "${all_flags[@]}" --help -h --version --generate-completions |
+						__suggest_flag "${inline_flag:-$arg}")
+					if [ -n "$_suggestions" ]; then
+						echo >&2
+						if [ "$(grep -c . <<<"$_suggestions")" -gt 1 ]; then
+							echo "The most similar options are" >&2
+						else
+							echo "The most similar option is" >&2
+						fi
+						while IFS= read -r _suggestion; do
+							printf '\t%s\n' "${flag_display["$_suggestion"]:-$_suggestion}" >&2
+						done <<<"$_suggestions"
+					fi
 					exit 1
 				fi
 				program_args+=("$arg")
