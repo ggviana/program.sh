@@ -1483,6 +1483,62 @@ EOF
 	[[ "$output" == *'required_option "--to <resolution>" redeclares'* ]]
 }
 
+# ── option_type redeclaration ─────────────────
+
+@test "option_type: declaring a type twice for one option errors" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--to <r>" "Target"
+option_type "--to" choice "480" "720"
+option_type "--to" integer
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'redeclares the type of "--to"'* ]]
+	[[ "$output" == *'already declared as "choice"'* ]]
+}
+
+@test "option_type: the second declaration is caught through an alias" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-t, --to <r>" "Target"
+option_type "--to" integer
+option_type "-t" choice "480"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'redeclares the type of "--to"'* ]]
+}
+
+@test "option_type: distinct options each get a type" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--to <r>" "Target"
+option "--num <n>" "Num"
+option_type "--to" choice "480"
+option_type "--num" integer
+parse --to 480 --num 3
+echo "ok"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "ok" ]
+}
+
 # ── defaults ──────────────────────────────────
 
 @test "option: a default keeps its surrounding whitespace" {

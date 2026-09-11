@@ -197,7 +197,7 @@ option "-v" "Verbose output"
 
 ### `option_type "<flag>" <type> [<args>...]`
 
-Declares the type of value an option accepts. Must be called after the corresponding `option` declaration and before `parse`. Validation runs inside `parse` and exits 1 with a message on failure. Validation is skipped when the option value is empty and the flag was not passed — there is no concept of a required option. A `choice` flag that *is* passed must carry one of its choices: `--to` with nothing after it, or `--to=`, exits 1.
+Declares the type of value an option accepts. Must be called after the corresponding `option` declaration and before `parse`, and only once per option — a second `option_type` for the same option exits 1 rather than silently replacing the first. Validation runs inside `parse` and exits 1 with a message on failure. Validation is skipped when the option value is empty and the flag was not passed — there is no concept of a required option. A `choice` flag that *is* passed must carry one of its choices: `--to` with nothing after it, or `--to=`, exits 1.
 
 | Parameter | Description |
 |-----------|-------------|

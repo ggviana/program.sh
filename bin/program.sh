@@ -207,7 +207,8 @@ __resolve_option_name() {
 }
 
 # Declares the type of value an option accepts, enabling runtime validation and
-# (later) completion generation. Must be called after option() and before parse().
+# (later) completion generation. Must be called after option() and before parse(),
+# and only once per option — a second declaration for the same option exits 1.
 # Any flag of the option may be given — aliases resolve to the canonical name.
 # Validation is skipped when the option value is empty.
 #
@@ -230,6 +231,10 @@ option_type() {
 	shift 2
 	local option_name
 	option_name=$(__resolve_option_name "$flag")
+	if [ -n "${program_option_type["$option_name"]+declared}" ]; then
+		echo "Error: option_type \"$flag\" redeclares the type of \"${program_option_flag["$option_name"]:---$option_name}\", already declared as \"${program_option_type["$option_name"]}\"" >&2
+		exit 1
+	fi
 	program_option_type["$option_name"]="$type"
 	if [ "$type" = "choice" ] || [ "$type" = "between" ]; then
 		program_option_choices["$option_name"]="$*"
