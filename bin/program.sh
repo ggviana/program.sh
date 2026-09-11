@@ -92,6 +92,7 @@ argument() {
 # Usage: option "<flags>" "<description>" "<default>"
 #
 # Flag forms: -f | --flag | -f, --flag | -f <val> | --flag <val> | --no-feature
+# Short flags combine: -abc is -a -b -c, and -n5 is -n 5.
 # A flag is value-accepting when the flags string contains <...>, and takes an
 # optional value when it contains [...] — in that form, passing the flag with no
 # value after it stores "true", exactly like a boolean flag.
@@ -566,6 +567,7 @@ usage() {
 # - Handles --version: prints the declared version, or the script's mtime, exits 0.
 # - Matched flags store their value in $program_option["name"] and all aliases.
 #   Value-accepting flags consume the next token; boolean flags store "true".
+# - Combined short flags are expanded before matching: -abc becomes -a -b -c.
 # - Unrecognised tokens are appended to $program_args (indexed) and $program_arg (named);
 #   a token that looks like a flag is an error unless allow_unknown_options() was called,
 #   and the error suggests the nearest declared flag when one is close enough.
@@ -625,6 +627,29 @@ parse() {
 			exit 0
 			;;
 		*)
+			# -abc is shorthand for -a -b -c. A value-accepting flag in the group takes
+			# the rest of the token (-n5), or the next argument when the token ends
+			# (-an 5). Only attempted when the leading character is a declared short
+			# flag and the whole token is not itself one, so tokens a script means to
+			# forward — and negative numbers — are left alone.
+			if [[ "$arg" == -[!-]?* ]] &&
+				[ -z "${program_flag_has_arg["$arg"]+declared}" ] &&
+				[ -n "${program_flag_has_arg["-${arg:1:1}"]+declared}" ]; then
+				local _group="${arg:1}" _short
+				local -a _expanded=()
+				while [ -n "$_group" ]; do
+					_short="-${_group:0:1}"
+					_group="${_group:1}"
+					_expanded+=("$_short")
+					if [ "${program_flag_has_arg["$_short"]:-false}" = true ] && [ -n "$_group" ]; then
+						_expanded+=("$_group")
+						_group=""
+					fi
+				done
+				set -- "${_expanded[@]}" "$@"
+				continue
+			fi
+
 			local matched=false
 			local inline_flag="" inline_value=""
 

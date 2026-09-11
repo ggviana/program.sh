@@ -453,6 +453,7 @@ Parses the script's arguments. Must be called after all `option` and `argument` 
 - Handles `--generate-completions` automatically: prints a bash completion script and exits 0.
 - Handles `--version` automatically: prints the declared version, or the script's modification time, and exits 0.
 - For each matched flag, stores its value in `program_option["<name>"]`. Value-accepting flags consume the next token; boolean flags store `true`.
+- Combined short flags are expanded before matching, so `-abc` is `-a -b -c`. A value-accepting flag in the group takes the rest of the token (`-n5`), or the next argument when the token ends (`-an 5`). Expansion is only attempted when the leading character is a declared short flag and the whole token is not itself one, so forwarded tokens like `ls -la` and negative numbers are left alone.
 - A flag declared with `[value]` takes an *optional* value: it consumes the next token only when that token is data, and stores `true` when the flag is passed bare or followed by another flag. Because it cannot tell an intended value from the next positional argument, declare such flags so they are not followed by positionals — `--cheese pizza.txt` stores `pizza.txt` as the cheese.
 - Value-accepting flags also accept the inline form `--flag=value` (split on the first `=`, so `--set=a=b` yields `a=b`). Boolean flags do not: `--rm=x` exits 1 with `option --rm does not take a value`.
 - Unrecognised tokens are collected as positional args into `program_args` (indexed) and `program_arg` (named, if `argument` was declared).
@@ -529,6 +530,8 @@ The `flags` parameter of `option` accepts one or more flag tokens in a single st
 | Both combined | `-f, --flag` |
 | Short, value-accepting | `-f <value>` |
 | Optional value | `--flag [value]` |
+| Combined short flags | `-abc` — the same as `-a -b -c` |
+| Short flag with attached value | `-n5` — the same as `-n 5` |
 | Long, value-accepting | `--flag <value>` |
 | Both, value-accepting | `-f, --flag <value>` |
 | Negation (boolean off) | `--no-<feature>` |

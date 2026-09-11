@@ -1647,6 +1647,189 @@ EOF
 	[[ "$output" == *"redeclares the validator"* ]]
 }
 
+# ── combined short flags ──────────────────────
+
+@test "parse: -ab sets both boolean flags" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-a, --all" "All"
+option "-b, --bold" "Bold"
+parse -ab
+echo "all=${program_option["all"]} bold=${program_option["bold"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "all=true bold=true" ]
+}
+
+@test "parse: -n5 attaches the value to a short flag" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-n, --num <n>" "Num"
+parse -n5
+echo "num=${program_option["num"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "num=5" ]
+}
+
+@test "parse: a group ending in a value flag takes the rest of the token" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-a, --all" "All"
+option "-b, --bold" "Bold"
+option "-n, --num <n>" "Num"
+parse -abn5
+echo "all=${program_option["all"]} bold=${program_option["bold"]} num=${program_option["num"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "all=true bold=true num=5" ]
+}
+
+@test "parse: a group ending in a value flag takes the next argument" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-a, --all" "All"
+option "-n, --num <n>" "Num"
+parse -an 5
+echo "all=${program_option["all"]} num=${program_option["num"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "all=true num=5" ]
+}
+
+@test "parse: an optional-value flag in a group takes the rest of the token" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-a, --all" "All"
+option "-c, --cheese [type]" "Cheese"
+parse -acbrie
+echo "all=${program_option["all"]} cheese=${program_option["cheese"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "all=true cheese=brie" ]
+}
+
+@test "parse: an optional-value flag ending a group stores true" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-a, --all" "All"
+option "-c, --cheese [type]" "Cheese"
+parse -ac
+echo "all=${program_option["all"]} cheese=${program_option["cheese"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "all=true cheese=true" ]
+}
+
+@test "parse: an undeclared flag inside a group is named precisely" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-a, --all" "All"
+parse -ax
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"unknown option -x"* ]]
+}
+
+@test "parse: a group whose first flag is undeclared is left whole" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-a, --all" "All"
+parse -xa
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"unknown option -xa"* ]]
+}
+
+@test "parse: a declared multi-character short flag is not expanded" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-ab <x>" "AB"
+parse -ab 7
+echo "a=${program_option["a"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "a=7" ]
+}
+
+@test "parse: forwarded flags are untouched when no short flag is declared" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+argument "<command>" "Command"
+allow_unknown_options
+parse ls -la
+echo "args=${program_args[*]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "args=ls -la" ]
+}
+
+@test "parse: negative numbers are not expanded as flag groups" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-a, --all" "All"
+parse -50 -3.14
+echo "args=${program_args[*]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "args=-50 -3.14" ]
+}
+
 # ── did you mean ──────────────────────────────
 
 @test "parse: an unknown option suggests the nearest declared flag" {
