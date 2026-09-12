@@ -121,8 +121,8 @@ option() {
 		fi
 	fi
 
-	local _flags
-	IFS=$'\n' read -r -d ' ' -a _flags <<<"$(__extract_flags "$option_flags")"
+	local -a _flags
+	mapfile -t _flags < <(__extract_flags "$option_flags")
 
 	# Reject redeclarations before touching any state. Reported under whichever
 	# declaration form the caller used, since required_option() delegates here.
@@ -233,7 +233,8 @@ __program_version() {
 __resolve_option_name() {
 	local candidate="${1#-}"
 	candidate="${candidate#-}"
-	local _ro_options _ro_option _ro_name _ro_flags _ro_rest _ro_flag_list _ro_flag _ro_alias
+	local _ro_options _ro_option _ro_name _ro_flags _ro_rest _ro_flag _ro_alias
+	local -a _ro_flag_list
 	IFS=';' read -ra _ro_options <<<"$program_options"
 	for _ro_option in "${_ro_options[@]}"; do
 		IFS=':' read -r _ro_name _ro_flags _ro_rest <<<"$_ro_option"
@@ -242,7 +243,7 @@ __resolve_option_name() {
 			echo "$candidate"
 			return
 		fi
-		IFS=$'\n' read -r -d ' ' -a _ro_flag_list <<<"$(__extract_flags "$_ro_flags")"
+		mapfile -t _ro_flag_list < <(__extract_flags "$_ro_flags")
 		for _ro_flag in "${_ro_flag_list[@]}"; do
 			_ro_alias="${_ro_flag#-}"
 			_ro_alias="${_ro_alias#-}"
@@ -361,8 +362,8 @@ required_option() {
 
 	option "$option_flags" "$2"
 
-	local _req_flags
-	IFS=$'\n' read -r -d ' ' -a _req_flags <<<"$(__extract_flags "$option_flags")"
+	local -a _req_flags
+	mapfile -t _req_flags < <(__extract_flags "$option_flags")
 	local option_name
 	option_name=$(__resolve_option_name "${_req_flags[0]}")
 	if [ -n "${program_option["$option_name"]}" ]; then
@@ -602,7 +603,7 @@ parse() {
 	for option in "${options[@]}"; do
 		IFS=':' read -r option_name option_flags option_description option_default_value <<<"$option"
 
-		IFS=$'\n' read -r -d ' ' -a flags <<<"$(__extract_flags "$option_flags")"
+		mapfile -t flags < <(__extract_flags "$option_flags")
 
 		# The placeholder as written, so a suggestion can show "--to <resolution>"
 		local placeholder=""

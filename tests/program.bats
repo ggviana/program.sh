@@ -2416,6 +2416,60 @@ EOF
 	[ "$output" = "ok" ]
 }
 
+# ── shell options ─────────────────────────────
+
+@test "option: declaring an option survives set -e" {
+	local script
+	script=$(
+		make_script <<'EOF'
+set -e
+name "mytool"
+description "does stuff"
+option "-n, --num <x>" "Num"
+parse -n 3
+echo "reached the end"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "reached the end" ]
+}
+
+@test "required_option: declaring one survives set -e" {
+	local script
+	script=$(
+		make_script <<'EOF'
+set -e
+name "mytool"
+description "does stuff"
+required_option "-n, --num <x>" "Num"
+parse -n 3
+echo "reached the end"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "reached the end" ]
+}
+
+@test "option_type: resolving a flag survives set -e" {
+	local script
+	script=$(
+		make_script <<'EOF'
+set -e
+name "mytool"
+description "does stuff"
+option "-n, --num <x>" "Num"
+option_type "--num" integer
+parse -n 3
+echo "reached the end"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "reached the end" ]
+}
+
 # ── defaults ──────────────────────────────────
 
 @test "option: a default keeps its surrounding whitespace" {
