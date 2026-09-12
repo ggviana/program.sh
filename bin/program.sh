@@ -129,13 +129,11 @@ option() {
 	local _decl="option"
 	[ "${FUNCNAME[1]:-}" = required_option ] && _decl="required_option"
 	if [ -n "${program_option_declared["$option_name"]+declared}" ]; then
-		echo "Error: $_decl \"$option_flags\" redeclares the option name \"$option_name\", already declared by \"${program_option_declared["$option_name"]}\"" >&2
-		exit 1
+		__die "$_decl \"$option_flags\" redeclares the option name \"$option_name\", already declared by \"${program_option_declared["$option_name"]}\""
 	fi
 	for _flag in "${_flags[@]}"; do
 		if [ -n "${program_option_declared["$_flag"]+declared}" ]; then
-			echo "Error: $_decl \"$option_flags\" redeclares the flag \"$_flag\", already declared by \"${program_option_declared["$_flag"]}\"" >&2
-			exit 1
+			__die "$_decl \"$option_flags\" redeclares the flag \"$_flag\", already declared by \"${program_option_declared["$_flag"]}\""
 		fi
 	done
 	program_option_declared["$option_name"]="$option_flags"
@@ -158,6 +156,36 @@ option() {
 			program_option_flag["$option_name"]="$_flag"
 		fi
 	done
+}
+
+# Stores a value under an option's canonical name and every alias of it, optionally
+# marking it as supplied. Reads parse()'s option_aliases map, so it is only
+# meaningful while parse() is running.
+__store_option_value() {
+	local name="$1" value="$2" mark_passed="${3:-false}" alias
+	program_option["$name"]="$value"
+	[ "$mark_passed" = true ] && program_option_passed["$name"]=true
+	for alias in ${option_aliases["$name"]}; do
+		program_option["$alias"]="$value"
+		[ "$mark_passed" = true ] && program_option_passed["$alias"]=true
+	done
+	return 0
+}
+
+# Reports a declaration mistake and stops. Declaration errors are the script
+# author's to fix, so they print no usage — the usage text describes the very
+# declarations that are wrong.
+__die() {
+	echo "Error: $*" >&2
+	exit 1
+}
+
+# Reports a bad invocation and stops, following it with the usage text so the
+# caller can see what was expected.
+__fail() {
+	echo "Error: $*" >&2
+	usage >&2
+	exit 1
 }
 
 # Prints the declared flags closest to an unrecognised one, when they are close
@@ -282,8 +310,7 @@ option_type() {
 	local option_name
 	option_name=$(__resolve_option_name "$flag")
 	if [ -n "${program_option_type["$option_name"]+declared}" ]; then
-		echo "Error: option_type \"$flag\" redeclares the type of \"${program_option_flag["$option_name"]:---$option_name}\", already declared as \"${program_option_type["$option_name"]}\"" >&2
-		exit 1
+		__die "option_type \"$flag\" redeclares the type of \"${program_option_flag["$option_name"]:---$option_name}\", already declared as \"${program_option_type["$option_name"]}\""
 	fi
 	program_option_type["$option_name"]="$type"
 	if [ "$type" = "choice" ] || [ "$type" = "between" ]; then
@@ -307,8 +334,7 @@ option_env() {
 	local option_name
 	option_name=$(__resolve_option_name "$1")
 	if [ -n "${program_option_env["$option_name"]+declared}" ]; then
-		echo "Error: option_env \"$1\" redeclares the variable of \"${program_option_flag["$option_name"]:---$option_name}\", already declared as \"${program_option_env["$option_name"]}\"" >&2
-		exit 1
+		__die "option_env \"$1\" redeclares the variable of \"${program_option_flag["$option_name"]:---$option_name}\", already declared as \"${program_option_env["$option_name"]}\""
 	fi
 	program_option_env["$option_name"]="$2"
 }
@@ -333,8 +359,7 @@ option_validator() {
 	local option_name
 	option_name=$(__resolve_option_name "$1")
 	if [ -n "${program_option_validator["$option_name"]+declared}" ]; then
-		echo "Error: option_validator \"$1\" redeclares the validator of \"${program_option_flag["$option_name"]:---$option_name}\"" >&2
-		exit 1
+		__die "option_validator \"$1\" redeclares the validator of \"${program_option_flag["$option_name"]:---$option_name}\""
 	fi
 	program_option_validator["$option_name"]="$2"
 }
@@ -356,8 +381,7 @@ option_validator() {
 required_option() {
 	local option_flags="$1"
 	if [ -n "${3:-}" ]; then
-		echo "Error: required_option \"$option_flags\" does not take a default value" >&2
-		exit 1
+		__die "required_option \"$option_flags\" does not take a default value"
 	fi
 
 	option "$option_flags" "$2"
@@ -367,8 +391,7 @@ required_option() {
 	local option_name
 	option_name=$(__resolve_option_name "${_req_flags[0]}")
 	if [ -n "${program_option["$option_name"]}" ]; then
-		echo "Error: required_option \"$option_flags\" defaults to true, so it can never be missing" >&2
-		exit 1
+		__die "required_option \"$option_flags\" defaults to true, so it can never be missing"
 	fi
 	program_option_required["$option_name"]=true
 }
@@ -416,8 +439,7 @@ depends_of() {
 		# command twice is redundant at best and contradictory at worst.
 		dependency_name="${dependency%% *}"
 		if [ -n "${program_dependency_declared["$dependency_name"]+declared}" ]; then
-			echo "Error: depends_of \"$dependency\" redeclares the dependency \"$dependency_name\", already declared by \"${program_dependency_declared["$dependency_name"]}\"" >&2
-			exit 1
+			__die "depends_of \"$dependency\" redeclares the dependency \"$dependency_name\", already declared by \"${program_dependency_declared["$dependency_name"]}\""
 		fi
 		program_dependency_declared["$dependency_name"]="$dependency"
 		program_dependencies+=("$dependency")
@@ -446,8 +468,12 @@ generate_completions() {
 		IFS=':' read -r _gc_name _gc_flags _ _ <<<"$_gc_opt"
 		[ -z "$_gc_name" ] && continue
 
+		# In a variable, so the pattern reaches the regex engine untouched by the
+		# quoting rules of [[ ]] — a bare < there is a syntax error, and an escaped
+		# one is a word-boundary operator under GNU regex.
+		local _gc_value_re='<[^>]+>|\[[^]]+\]'
 		local _gc_has_value=false
-		[[ "$_gc_flags" =~ \<.*\> || "$_gc_flags" =~ \[.*\] ]] && _gc_has_value=true
+		[[ "$_gc_flags" =~ $_gc_value_re ]] && _gc_has_value=true
 
 		local _gc_flag_tokens=()
 		while IFS= read -r _gc_f; do
@@ -552,9 +578,12 @@ usage() {
 				suffix=" (default: $option_default_value)"
 			fi
 			if [ -n "${program_option_choices["$option_name"]}" ]; then
-				local choices_display
-				choices_display="${program_option_choices["$option_name"]// /, }"
-				suffix="$suffix (choices: $choices_display)"
+				# The same array backs both types: a list for choice, two bounds for between
+				if [ "${program_option_type["$option_name"]}" = between ]; then
+					suffix="$suffix (range: ${program_option_choices["$option_name"]// /–})"
+				else
+					suffix="$suffix (choices: ${program_option_choices["$option_name"]// /, })"
+				fi
 			fi
 			if [ -n "${program_option_env["$option_name"]}" ]; then
 				suffix="$suffix (env: ${program_option_env["$option_name"]})"
@@ -601,28 +630,31 @@ parse() {
 	declare -A program_option_passed # option_name/alias → true when seen on the command line
 	IFS=';' read -ra options <<<"$program_options"
 	for option in "${options[@]}"; do
-		IFS=':' read -r option_name option_flags option_description option_default_value <<<"$option"
+		IFS=':' read -r option_name option_flags _ _ <<<"$option"
 
 		mapfile -t flags < <(__extract_flags "$option_flags")
 
-		# The placeholder as written, so a suggestion can show "--to <resolution>"
+		# The placeholder as written, so a suggestion can show "--to <resolution>".
+		# Held in a variable for the same reason as _gc_value_re above.
+		local _placeholder_re='(<[^>]+>|\[[^]]+\])'
 		local placeholder=""
-		if [[ "$option_flags" =~ (\<[^>]+\>|\[[^]]+\]) ]]; then
+		if [[ "$option_flags" =~ $_placeholder_re ]]; then
 			placeholder=" ${BASH_REMATCH[1]}"
+		fi
+
+		# <value> is required, [value] is optional, neither is a boolean flag
+		local has_arg=false optional_arg=false
+		if [ -n "$placeholder" ]; then
+			has_arg=true
+			[ "${placeholder:1:1}" = "[" ] && optional_arg=true
 		fi
 
 		for flag in "${flags[@]}"; do
 			all_flags+=("$flag")
 			flag_display["$flag"]="$flag$placeholder"
 			program_flag_option_name["$flag"]="$option_name"
-			program_flag_has_arg["$flag"]=false
-			program_flag_optional_arg["$flag"]=false
-			if [ -n "$(__extract_arg_names "$option_flags")" ]; then
-				program_flag_has_arg["$flag"]=true
-			elif [ -n "$(__extract_optional_arg_names "$option_flags")" ]; then
-				program_flag_has_arg["$flag"]=true
-				program_flag_optional_arg["$flag"]=true
-			fi
+			program_flag_has_arg["$flag"]="$has_arg"
+			program_flag_optional_arg["$flag"]="$optional_arg"
 			local alias="${flag#-}"
 			alias="${alias#-}"
 			option_aliases["$option_name"]+="$alias "
@@ -718,12 +750,7 @@ parse() {
 					continue
 				fi
 
-				program_option["$option_name"]="$value"
-				program_option_passed["$option_name"]=true
-				for alias in ${option_aliases["$option_name"]}; do
-					program_option["$alias"]="$value"
-					program_option_passed["$alias"]=true
-				done
+				__store_option_value "$option_name" "$value" true
 				matched=true
 			done
 			if [ "$matched" = false ]; then
@@ -731,9 +758,7 @@ parse() {
 				# positional. A lone "-" and negative numbers stay arguments.
 				if [ "$program_allow_unknown_options" = false ] && __looks_like_flag "$arg"; then
 					if [ -n "$inline_flag" ] && [ -n "${program_flag_has_arg["$inline_flag"]+declared}" ]; then
-						echo "Error: option $inline_flag does not take a value" >&2
-						usage >&2
-						exit 1
+						__fail "option $inline_flag does not take a value"
 					fi
 
 					local _prog="${program_name:-$(basename "$0")}"
@@ -776,17 +801,12 @@ parse() {
 	# Environment fallback for options the command line did not provide. Runs before
 	# every validation, so an environment value satisfies required_option() and is
 	# checked by option_type() like any other.
-	local _env_name _env_var _env_alias
+	local _env_name _env_var
 	for _env_name in "${!program_option_env[@]}"; do
 		[ "${program_option_passed["$_env_name"]:-}" = true ] && continue
 		_env_var="${program_option_env["$_env_name"]}"
 		[ -n "${!_env_var:-}" ] || continue
-		program_option["$_env_name"]="${!_env_var}"
-		program_option_passed["$_env_name"]=true
-		for _env_alias in ${option_aliases["$_env_name"]}; do
-			program_option["$_env_alias"]="${!_env_var}"
-			program_option_passed["$_env_alias"]=true
-		done
+		__store_option_value "$_env_name" "${!_env_var}" true
 	done
 
 	# Validate dependencies
@@ -801,18 +821,14 @@ parse() {
 			_dep_name="$_dep"
 		fi
 		if ! "${_dep_cmd[@]}" &>/dev/null; then
-			echo "Error: missing dependency \"$_dep_name\" (command failed: ${_dep_cmd[*]})" >&2
-			usage >&2
-			exit 1
+			__fail "missing dependency \"$_dep_name\" (command failed: ${_dep_cmd[*]})"
 		fi
 	done
 
 	# Validate required options
 	for _req_name in "${!program_option_required[@]}"; do
 		if [ "${program_option_passed["$_req_name"]:-}" != true ]; then
-			echo "Error: option ${program_option_flag["$_req_name"]} is required" >&2
-			usage >&2
-			exit 1
+			__fail "option ${program_option_flag["$_req_name"]} is required"
 		fi
 	done
 
@@ -828,9 +844,7 @@ parse() {
 				[ "${program_option_type["$_opt_name"]}" = choice ]; then
 				local _missing_choices
 				_missing_choices="${program_option_choices["$_opt_name"]// /, }"
-				echo "Error: $_opt_flag requires one of: $_missing_choices" >&2
-				usage >&2
-				exit 1
+				__fail "$_opt_flag requires one of: $_missing_choices"
 			fi
 			continue
 		fi
@@ -847,16 +861,12 @@ parse() {
 			if [ "$_valid" = false ]; then
 				local _choices_display
 				_choices_display="${_choices// /, }"
-				echo "Error: invalid value for $_opt_flag: \"$_value\". Valid choices: $_choices_display" >&2
-				usage >&2
-				exit 1
+				__fail "invalid value for $_opt_flag: \"$_value\". Valid choices: $_choices_display"
 			fi
 			;;
 		integer)
 			if [[ ! "$_value" =~ ^-?[0-9]+$ ]]; then
-				echo "Error: $_opt_flag expects an integer, got \"$_value\"" >&2
-				usage >&2
-				exit 1
+				__fail "$_opt_flag expects an integer, got \"$_value\""
 			fi
 			;;
 		path) ;;
@@ -866,42 +876,32 @@ parse() {
 			_max=$(echo "${program_option_choices["$_opt_name"]}" | cut -d' ' -f2)
 			if ! [[ "$_value" =~ ^-?[0-9]*\.?[0-9]+$ ]] ||
 				! awk "BEGIN { exit !($_value >= $_min && $_value <= $_max) }"; then
-				echo "Error: $_opt_flag must be a number between $_min and $_max, got \"$_value\"" >&2
-				usage >&2
-				exit 1
+				__fail "$_opt_flag must be a number between $_min and $_max, got \"$_value\""
 			fi
 			;;
 		esac
 	done
 
 	# Custom validators, after the built-in type checks so both apply
-	local _val_name _val_value _val_flag _val_fn _val_out _val_alias
+	local _val_name _val_value _val_flag _val_fn _val_out
 	for _val_name in "${!program_option_validator[@]}"; do
 		_val_value="${program_option["$_val_name"]}"
 		[ -z "$_val_value" ] && continue
 		_val_flag="${program_option_flag["$_val_name"]:---$_val_name}"
 		_val_fn="${program_option_validator["$_val_name"]}"
 		if ! declare -F "$_val_fn" >/dev/null; then
-			echo "Error: option_validator for $_val_flag names an undefined function \"$_val_fn\"" >&2
-			exit 1
+			__die "option_validator for $_val_flag names an undefined function \"$_val_fn\""
 		fi
 		if ! _val_out=$("$_val_fn" "$_val_value"); then
-			echo "Error: invalid value for $_val_flag: \"$_val_value\"" >&2
-			usage >&2
-			exit 1
+			__fail "invalid value for $_val_flag: \"$_val_value\""
 		fi
-		program_option["$_val_name"]="$_val_out"
-		for _val_alias in ${option_aliases["$_val_name"]}; do
-			program_option["$_val_alias"]="$_val_out"
-		done
+		__store_option_value "$_val_name" "$_val_out"
 	done
 
 	if [ "$program_has_args" = true ] &&
 		[ -z "${program_args_default["$program_args_name"]}" ] &&
 		[ "$program_args_count" -eq 0 ]; then
-		echo "Error: argument $program_args_name is required" >&2
-		usage >&2
-		exit 1
+		__fail "argument $program_args_name is required"
 	fi
 }
 

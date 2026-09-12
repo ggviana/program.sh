@@ -20,13 +20,6 @@ __extract_option_name() {
 	echo "$name"
 }
 
-# Extracts [token] names from a flags string, the optional-value form.
-# Input:  "--cheese [type]"
-# Output: "type"
-__extract_optional_arg_names() {
-	echo "$1" | grep -oP "(?<=\\[)[^\\]]+" || true
-}
-
 # Extracts all flag tokens from a flags string.
 # Input:  "-n, --num <amount>"
 # Output: "-n\n--num"
