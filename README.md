@@ -552,6 +552,39 @@ Options:
 
 ---
 
+## Namespacing
+
+Every function the library uses internally is namespaced under `program::` — the
+helpers (`program::trim`, `program::fail`, `program::resolve_option_name`, …) and
+the three functions that are both public API and called from inside `parse`:
+`program::usage`, `program::option`, `program::generate_completions`.
+
+The public names are unchanged. `usage`, `option` and `generate_completions` are
+thin wrappers over their namespaced implementations, and the library only ever
+calls the namespaced form. That matters because `usage` is a name shell scripts
+define constantly:
+
+```bash
+source "$HOME/.local/lib/program.sh"
+name "mytool"
+option "--to <resolution>" "Target resolution"
+
+usage() { echo "my own usage"; }   # shadows the wrapper, for this script only
+
+parse "$@"     # --help and every error path still print the library's usage
+usage          # prints "my own usage"
+```
+
+Before this, a script-defined `usage()` was reached from inside `parse`, so
+`--help` and every validation error printed the script's version instead of the
+real one — silently.
+
+One limit follows from keeping the short names: a script that defines `usage()`
+*before* sourcing has it overwritten by the wrapper. Define it after the `source`
+line, as above.
+
+---
+
 ## Flag format
 
 The `flags` parameter of `option` accepts one or more flag tokens in a single string. Tokens are extracted by the regex `(-{1,2}[a-zA-Z-]+)`.

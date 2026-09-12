@@ -3154,13 +3154,13 @@ EOF
 	[[ "$output" == *"complete -F"* ]]
 }
 
-# ── __trim ────────────────────────────────────
+# ── program::trim ────────────────────────────────────
 
-@test "__trim: removes leading whitespace" {
+@test "program::trim: removes leading whitespace" {
 	local script
 	script=$(
 		make_script <<'EOF'
-result=$(__trim "   hello")
+result=$(program::trim "   hello")
 echo "$result"
 EOF
 	)
@@ -3169,11 +3169,11 @@ EOF
 	[ "$output" = "hello" ]
 }
 
-@test "__trim: removes trailing whitespace" {
+@test "program::trim: removes trailing whitespace" {
 	local script
 	script=$(
 		make_script <<'EOF'
-result=$(__trim "hello   ")
+result=$(program::trim "hello   ")
 echo "$result"
 EOF
 	)
@@ -3182,11 +3182,11 @@ EOF
 	[ "$output" = "hello" ]
 }
 
-@test "__trim: removes leading and trailing whitespace" {
+@test "program::trim: removes leading and trailing whitespace" {
 	local script
 	script=$(
 		make_script <<'EOF'
-result=$(__trim "   hello world   ")
+result=$(program::trim "   hello world   ")
 echo "$result"
 EOF
 	)
@@ -3195,12 +3195,12 @@ EOF
 	[ "$output" = "hello world" ]
 }
 
-@test "__trim: does not leak var into caller scope" {
+@test "program::trim: does not leak var into caller scope" {
 	local script
 	script=$(
 		make_script <<'EOF'
 var="original"
-__trim "   trimmed   " > /dev/null
+program::trim "   trimmed   " > /dev/null
 echo "$var"
 EOF
 	)
@@ -3209,13 +3209,13 @@ EOF
 	[ "$output" = "original" ]
 }
 
-# ── __extract_arg_names ───────────────────────
+# ── program::extract_arg_names ───────────────────────
 
-@test "__extract_arg_names: single token" {
+@test "program::extract_arg_names: single token" {
 	local script
 	script=$(
 		make_lib_script <<'SCRIPT'
-__extract_arg_names "<port>"
+program::extract_arg_names "<port>"
 SCRIPT
 	)
 	run "$script"
@@ -3223,11 +3223,11 @@ SCRIPT
 	[ "$output" = "port" ]
 }
 
-@test "__extract_arg_names: multiple tokens" {
+@test "program::extract_arg_names: multiple tokens" {
 	local script
 	script=$(
 		make_lib_script <<'SCRIPT'
-__extract_arg_names "<public-key> <file>"
+program::extract_arg_names "<public-key> <file>"
 SCRIPT
 	)
 	run "$script"
@@ -3236,11 +3236,11 @@ SCRIPT
 	[ "${lines[1]}" = "file" ]
 }
 
-@test "__extract_arg_names: no tokens returns empty" {
+@test "program::extract_arg_names: no tokens returns empty" {
 	local script
 	script=$(
 		make_lib_script <<'SCRIPT'
-__extract_arg_names "no angle brackets"
+program::extract_arg_names "no angle brackets"
 SCRIPT
 	)
 	run "$script"
@@ -3248,13 +3248,13 @@ SCRIPT
 	[ "$output" = "" ]
 }
 
-# ── __extract_option_name ─────────────────────
+# ── program::extract_option_name ─────────────────────
 
-@test "__extract_option_name: long flag" {
+@test "program::extract_option_name: long flag" {
 	local script
 	script=$(
 		make_lib_script <<'SCRIPT'
-__extract_option_name "--force"
+program::extract_option_name "--force"
 SCRIPT
 	)
 	run "$script"
@@ -3262,11 +3262,11 @@ SCRIPT
 	[ "$output" = "force" ]
 }
 
-@test "__extract_option_name: long flag with value" {
+@test "program::extract_option_name: long flag with value" {
 	local script
 	script=$(
 		make_lib_script <<'SCRIPT'
-__extract_option_name "--num <amount>"
+program::extract_option_name "--num <amount>"
 SCRIPT
 	)
 	run "$script"
@@ -3274,11 +3274,11 @@ SCRIPT
 	[ "$output" = "num" ]
 }
 
-@test "__extract_option_name: short flag only" {
+@test "program::extract_option_name: short flag only" {
 	local script
 	script=$(
 		make_lib_script <<'SCRIPT'
-__extract_option_name "-f"
+program::extract_option_name "-f"
 SCRIPT
 	)
 	run "$script"
@@ -3286,11 +3286,11 @@ SCRIPT
 	[ "$output" = "f" ]
 }
 
-@test "__extract_option_name: combined flags uses long" {
+@test "program::extract_option_name: combined flags uses long" {
 	local script
 	script=$(
 		make_lib_script <<'SCRIPT'
-__extract_option_name "-n, --num <amount>"
+program::extract_option_name "-n, --num <amount>"
 SCRIPT
 	)
 	run "$script"
@@ -3298,13 +3298,13 @@ SCRIPT
 	[ "$output" = "num" ]
 }
 
-# ── __extract_flags ───────────────────────────
+# ── program::extract_flags ───────────────────────────
 
-@test "__extract_flags: short flag only" {
+@test "program::extract_flags: short flag only" {
 	local script
 	script=$(
 		make_lib_script <<'SCRIPT'
-__extract_flags "-f"
+program::extract_flags "-f"
 SCRIPT
 	)
 	run "$script"
@@ -3312,11 +3312,11 @@ SCRIPT
 	[ "$output" = "-f" ]
 }
 
-@test "__extract_flags: long flag only" {
+@test "program::extract_flags: long flag only" {
 	local script
 	script=$(
 		make_lib_script <<'SCRIPT'
-__extract_flags "--force"
+program::extract_flags "--force"
 SCRIPT
 	)
 	run "$script"
@@ -3324,11 +3324,11 @@ SCRIPT
 	[ "$output" = "--force" ]
 }
 
-@test "__extract_flags: combined flags" {
+@test "program::extract_flags: combined flags" {
 	local script
 	script=$(
 		make_lib_script <<'SCRIPT'
-__extract_flags "-n, --num <amount>"
+program::extract_flags "-n, --num <amount>"
 SCRIPT
 	)
 	run "$script"

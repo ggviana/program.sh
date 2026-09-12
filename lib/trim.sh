@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Trims leading and trailing whitespace from a string.
-__trim() {
+program::trim() {
 	# Original variable with leading and trailing whitespace
 	local var="$1"
 
