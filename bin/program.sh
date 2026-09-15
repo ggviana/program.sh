@@ -40,7 +40,7 @@ declare -A program_dependency_declared
 # Example:
 #   name "port-kill"
 name() {
-	program_name="$1"
+	program_name="${1:-}"
 }
 
 # Sets the one-line description shown below the usage line.
@@ -51,7 +51,7 @@ name() {
 # Example:
 #   description "Kills the process listening on the given port"
 description() {
-	program_description="$1"
+	program_description="${1:-}"
 }
 
 # Sets the version string reported by --version. Optional: when it is not called,
@@ -61,7 +61,7 @@ description() {
 #
 # Usage: version "<string>"
 version() {
-	program_version="$1"
+	program_version="${1:-}"
 }
 
 # Declares a single positional argument. Only one declaration is supported per script.
@@ -77,9 +77,9 @@ version() {
 #   argument "<path>" "Directory to scan" "./"
 argument() {
 	program_has_args=true
-	program_args_name="$1"
-	program_args_description="$2"
-	program_args_default["$1"]="$3"
+	program_args_name="${1:-}"
+	program_args_description="${2:-}"
+	program_args_default["${1:-}"]="${3:-}"
 }
 
 # Declares a named option. Multiple options can be declared, but each option name
@@ -102,12 +102,12 @@ argument() {
 #   option "--force" "Skip confirmation"
 #   option "--no-cheese" "Omit cheese"  → program_option["cheese"]
 program::option() {
-	local option_flags=$1
+	local option_flags="${1:-}"
 	local option_description
-	option_description=$(program::trim "$2")
+	option_description=$(program::trim "${2:-}")
 	# The description is presentation and is trimmed; the default is data and is not,
 	# so a whitespace-significant default such as ", " survives intact.
-	local option_default_value="$3"
+	local option_default_value="${3:-}"
 
 	# Derive name from the first long flag (--flag → flag), falling back to short (-f → f)
 	local option_name
@@ -129,11 +129,11 @@ program::option() {
 	local _decl="option"
 	[ "${FUNCNAME[1]:-}" = required_option ] && _decl="required_option"
 	if [ -n "${program_option_declared["$option_name"]+declared}" ]; then
-		program::die "$_decl \"$option_flags\" redeclares the option name \"$option_name\", already declared by \"${program_option_declared["$option_name"]}\""
+		program::die "$_decl \"$option_flags\" redeclares the option name \"$option_name\", already declared by \"${program_option_declared["$option_name"]:-}\""
 	fi
 	for _flag in "${_flags[@]}"; do
 		if [ -n "${program_option_declared["$_flag"]+declared}" ]; then
-			program::die "$_decl \"$option_flags\" redeclares the flag \"$_flag\", already declared by \"${program_option_declared["$_flag"]}\""
+			program::die "$_decl \"$option_flags\" redeclares the flag \"$_flag\", already declared by \"${program_option_declared["$_flag"]:-}\""
 		fi
 	done
 	program_option_declared["$option_name"]="$option_flags"
@@ -151,8 +151,8 @@ program::option() {
 		_alias="${_alias#-}"
 		program_option["$_alias"]="$option_default_value"
 		# The flag error messages refer to: the first long form, else the short one
-		if [ -z "${program_option_flag["$option_name"]}" ] ||
-			[[ "$_flag" == --* && "${program_option_flag["$option_name"]}" != --* ]]; then
+		if [ -z "${program_option_flag["$option_name"]:-}" ] ||
+			[[ "$_flag" == --* && "${program_option_flag["$option_name"]:-}" != --* ]]; then
 			program_option_flag["$option_name"]="$_flag"
 		fi
 	done
@@ -165,7 +165,7 @@ program::store_option_value() {
 	local name="$1" value="$2" mark_passed="${3:-false}" alias
 	program_option["$name"]="$value"
 	[ "$mark_passed" = true ] && program_option_passed["$name"]=true
-	for alias in ${option_aliases["$name"]}; do
+	for alias in ${option_aliases["$name"]:-}; do
 		program_option["$alias"]="$value"
 		[ "$mark_passed" = true ] && program_option_passed["$alias"]=true
 	done
@@ -310,7 +310,7 @@ option_type() {
 	local option_name
 	option_name=$(program::resolve_option_name "$flag")
 	if [ -n "${program_option_type["$option_name"]+declared}" ]; then
-		program::die "option_type \"$flag\" redeclares the type of \"${program_option_flag["$option_name"]:---$option_name}\", already declared as \"${program_option_type["$option_name"]}\""
+		program::die "option_type \"$flag\" redeclares the type of \"${program_option_flag["$option_name"]:---$option_name}\", already declared as \"${program_option_type["$option_name"]:-}\""
 	fi
 	program_option_type["$option_name"]="$type"
 	if [ "$type" = "choice" ] || [ "$type" = "between" ]; then
@@ -334,7 +334,7 @@ option_env() {
 	local option_name
 	option_name=$(program::resolve_option_name "$1")
 	if [ -n "${program_option_env["$option_name"]+declared}" ]; then
-		program::die "option_env \"$1\" redeclares the variable of \"${program_option_flag["$option_name"]:---$option_name}\", already declared as \"${program_option_env["$option_name"]}\""
+		program::die "option_env \"$1\" redeclares the variable of \"${program_option_flag["$option_name"]:---$option_name}\", already declared as \"${program_option_env["$option_name"]:-}\""
 	fi
 	program_option_env["$option_name"]="$2"
 }
@@ -390,7 +390,7 @@ required_option() {
 	mapfile -t _req_flags < <(program::extract_flags "$option_flags")
 	local option_name
 	option_name=$(program::resolve_option_name "${_req_flags[0]}")
-	if [ -n "${program_option["$option_name"]}" ]; then
+	if [ -n "${program_option["$option_name"]:-}" ]; then
 		program::die "required_option \"$option_flags\" defaults to true, so it can never be missing"
 	fi
 	program_option_required["$option_name"]=true
@@ -439,7 +439,7 @@ depends_of() {
 		# command twice is redundant at best and contradictory at worst.
 		dependency_name="${dependency%% *}"
 		if [ -n "${program_dependency_declared["$dependency_name"]+declared}" ]; then
-			program::die "depends_of \"$dependency\" redeclares the dependency \"$dependency_name\", already declared by \"${program_dependency_declared["$dependency_name"]}\""
+			program::die "depends_of \"$dependency\" redeclares the dependency \"$dependency_name\", already declared by \"${program_dependency_declared["$dependency_name"]:-}\""
 		fi
 		program_dependency_declared["$dependency_name"]="$dependency"
 		program_dependencies+=("$dependency")
@@ -488,9 +488,9 @@ program::generate_completions() {
 				_gc_pattern+="${_gc_pattern:+|}${_gc_f}"
 			done
 
-			case "${program_option_type["$_gc_name"]}" in
+			case "${program_option_type["$_gc_name"]:-}" in
 			choice)
-				local _gc_choices="${program_option_choices["$_gc_name"]}"
+				local _gc_choices="${program_option_choices["$_gc_name"]:-}"
 				case_lines+=("        ${_gc_pattern})")
 				case_lines+=("            COMPREPLY=( \$(compgen -W \"${_gc_choices}\" -- \"\$cur\") )")
 				case_lines+=("            return 0")
@@ -577,18 +577,19 @@ program::usage() {
 			if [ -n "$option_default_value" ]; then
 				suffix=" (default: $option_default_value)"
 			fi
-			if [ -n "${program_option_choices["$option_name"]}" ]; then
+			if [ -n "${program_option_choices["$option_name"]:-}" ]; then
 				# The same array backs both types: a list for choice, two bounds for between
-				if [ "${program_option_type["$option_name"]}" = between ]; then
-					suffix="$suffix (range: ${program_option_choices["$option_name"]// /–})"
+				local values="${program_option_choices["$option_name"]:-}"
+				if [ "${program_option_type["$option_name"]:-}" = between ]; then
+					suffix="$suffix (range: ${values// /–})"
 				else
-					suffix="$suffix (choices: ${program_option_choices["$option_name"]// /, })"
+					suffix="$suffix (choices: ${values// /, })"
 				fi
 			fi
-			if [ -n "${program_option_env["$option_name"]}" ]; then
-				suffix="$suffix (env: ${program_option_env["$option_name"]})"
+			if [ -n "${program_option_env["$option_name"]:-}" ]; then
+				suffix="$suffix (env: ${program_option_env["$option_name"]:-})"
 			fi
-			if [ -n "${program_option_required["$option_name"]}" ]; then
+			if [ -n "${program_option_required["$option_name"]:-}" ]; then
 				suffix="$suffix (required)"
 			fi
 			printf "  %-20s %s%s\n" "$option_flags" "$option_description" "$suffix"
@@ -682,7 +683,7 @@ parse() {
 			# The separator itself is consumed; a later "--" is an ordinary argument.
 			while [ "$#" -gt 0 ]; do
 				program_args+=("$1")
-				((program_args_count++))
+				program_args_count=$((program_args_count + 1))
 				shift
 			done
 			;;
@@ -723,8 +724,8 @@ parse() {
 				local option_name value
 
 				if [ "$flag" == "$arg" ]; then
-					option_name="${program_flag_option_name["$flag"]}"
-					if [ "${program_flag_optional_arg["$flag"]}" = "true" ]; then
+					option_name="${program_flag_option_name["$flag"]:-}"
+					if [ "${program_flag_optional_arg["$flag"]:-}" = "true" ]; then
 						# [value] is taken only when the next token is data, not a flag
 						if [ "$#" -gt 0 ] && ! program::looks_like_flag "$1"; then
 							value="$1"
@@ -732,9 +733,9 @@ parse() {
 						else
 							value=true
 						fi
-					elif [ "${program_flag_has_arg["$flag"]}" = "true" ]; then
-						value="$1"
-						shift
+					elif [ "${program_flag_has_arg["$flag"]:-}" = "true" ]; then
+						value="${1:-}"
+						[ "$#" -gt 0 ] && shift
 					else
 						if [[ "$flag" =~ ^--no- ]]; then
 							value=false
@@ -743,8 +744,8 @@ parse() {
 						fi
 					fi
 				elif [ -n "$inline_flag" ] && [ "$flag" == "$inline_flag" ] &&
-					[ "${program_flag_has_arg["$flag"]}" = "true" ]; then
-					option_name="${program_flag_option_name["$flag"]}"
+					[ "${program_flag_has_arg["$flag"]:-}" = "true" ]; then
+					option_name="${program_flag_option_name["$flag"]:-}"
 					value="$inline_value"
 				else
 					continue
@@ -781,7 +782,7 @@ parse() {
 					exit 1
 				fi
 				program_args+=("$arg")
-				((program_args_count++))
+				program_args_count=$((program_args_count + 1))
 			fi
 			;;
 		esac
@@ -793,8 +794,8 @@ parse() {
 		while IFS= read -r _name; do
 			[ -n "$_name" ] || continue
 			# shellcheck disable=SC2034
-			program_arg["$_name"]="${program_args[$_i]}"
-			((_i++))
+			program_arg["$_name"]="${program_args[$_i]:-}"
+			_i=$((_i + 1))
 		done <<<"$(program::extract_arg_names "$program_args_name")"
 	fi
 
@@ -804,7 +805,7 @@ parse() {
 	local _env_name _env_var
 	for _env_name in "${!program_option_env[@]}"; do
 		[ "${program_option_passed["$_env_name"]:-}" = true ] && continue
-		_env_var="${program_option_env["$_env_name"]}"
+		_env_var="${program_option_env["$_env_name"]:-}"
 		[ -n "${!_env_var:-}" ] || continue
 		program::store_option_value "$_env_name" "${!_env_var}" true
 	done
@@ -828,29 +829,30 @@ parse() {
 	# Validate required options
 	for _req_name in "${!program_option_required[@]}"; do
 		if [ "${program_option_passed["$_req_name"]:-}" != true ]; then
-			program::fail "option ${program_option_flag["$_req_name"]} is required"
+			program::fail "option ${program_option_flag["$_req_name"]:-} is required"
 		fi
 	done
 
 	# Validate option types
 	for _opt_name in "${!program_option_type[@]}"; do
-		local _value="${program_option["$_opt_name"]}"
+		local _value="${program_option["$_opt_name"]:-}"
 		local _opt_flag="${program_option_flag["$_opt_name"]:---$_opt_name}"
 		if [ -z "$_value" ]; then
 			# A choice flag that was actually passed must carry one of its choices.
 			# An option the caller never used stays unvalidated — there is no
 			# concept of a required option.
 			if [ "${program_option_passed["$_opt_name"]:-}" = true ] &&
-				[ "${program_option_type["$_opt_name"]}" = choice ]; then
-				local _missing_choices
-				_missing_choices="${program_option_choices["$_opt_name"]// /, }"
+				[ "${program_option_type["$_opt_name"]:-}" = choice ]; then
+				local _missing_choices _choices_list
+				_choices_list="${program_option_choices["$_opt_name"]:-}"
+				_missing_choices="${_choices_list// /, }"
 				program::fail "$_opt_flag requires one of: $_missing_choices"
 			fi
 			continue
 		fi
-		case "${program_option_type["$_opt_name"]}" in
+		case "${program_option_type["$_opt_name"]:-}" in
 		choice)
-			local _choices="${program_option_choices["$_opt_name"]}"
+			local _choices="${program_option_choices["$_opt_name"]:-}"
 			local _valid=false
 			for _choice in $_choices; do
 				if [ "$_value" = "$_choice" ]; then
@@ -872,8 +874,8 @@ parse() {
 		path) ;;
 		between)
 			local _min _max
-			_min=$(echo "${program_option_choices["$_opt_name"]}" | cut -d' ' -f1)
-			_max=$(echo "${program_option_choices["$_opt_name"]}" | cut -d' ' -f2)
+			_min=$(echo "${program_option_choices["$_opt_name"]:-}" | cut -d' ' -f1)
+			_max=$(echo "${program_option_choices["$_opt_name"]:-}" | cut -d' ' -f2)
 			if ! [[ "$_value" =~ ^-?[0-9]*\.?[0-9]+$ ]] ||
 				! awk "BEGIN { exit !($_value >= $_min && $_value <= $_max) }"; then
 				program::fail "$_opt_flag must be a number between $_min and $_max, got \"$_value\""
@@ -885,10 +887,10 @@ parse() {
 	# Custom validators, after the built-in type checks so both apply
 	local _val_name _val_value _val_flag _val_fn _val_out
 	for _val_name in "${!program_option_validator[@]}"; do
-		_val_value="${program_option["$_val_name"]}"
+		_val_value="${program_option["$_val_name"]:-}"
 		[ -z "$_val_value" ] && continue
 		_val_flag="${program_option_flag["$_val_name"]:---$_val_name}"
-		_val_fn="${program_option_validator["$_val_name"]}"
+		_val_fn="${program_option_validator["$_val_name"]:-}"
 		if ! declare -F "$_val_fn" >/dev/null; then
 			program::die "option_validator for $_val_flag names an undefined function \"$_val_fn\""
 		fi
@@ -899,7 +901,7 @@ parse() {
 	done
 
 	if [ "$program_has_args" = true ] &&
-		[ -z "${program_args_default["$program_args_name"]}" ] &&
+		[ -z "${program_args_default["$program_args_name"]:-}" ] &&
 		[ "$program_args_count" -eq 0 ]; then
 		program::fail "argument $program_args_name is required"
 	fi

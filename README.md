@@ -552,6 +552,26 @@ Options:
 
 ---
 
+## Shell options
+
+The library is safe to source into a script using `set -euo pipefail`. It reads no
+variable or array element without a default, and takes no positional parameter it
+was not given, so `set -u` will not fire on it; and it contains no command whose
+status is incidentally false, so `set -e` will not end the script during
+declaration or parsing.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+source "$HOME/.local/lib/program.sh"
+
+name "mytool"
+required_option "--to <resolution>" "Target resolution"
+parse "$@"
+```
+
+---
+
 ## Namespacing
 
 Every function the library uses internally is namespaced under `program::` — the

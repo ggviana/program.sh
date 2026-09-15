@@ -2418,6 +2418,133 @@ EOF
 
 # ── shell options ─────────────────────────────
 
+@test "parse: a positional argument survives set -e" {
+	local script
+	script=$(
+		make_script <<'EOF'
+set -e
+name "mytool"
+description "does stuff"
+argument "<file>" "File"
+parse a.txt
+echo "file=${program_arg["file"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "file=a.txt" ]
+}
+
+@test "parse: a full declaration set survives set -euo pipefail" {
+	local script
+	script=$(
+		make_script <<'EOF'
+set -euo pipefail
+name "mytool"
+description "does stuff"
+version "1.0"
+argument "<file>" "File" "."
+option "-n, --num <x>" "Num"
+option "--cheese [type]" "Cheese"
+option "-p, --port <p>" "Port" "8080"
+option_type "--num" integer
+option_env "--port" "MYTOOL_PORT"
+required_option "--to <r>" "Target"
+option_type "--to" choice "480" "720"
+depends_of "echo"
+parse --to 480 -n 3 a.txt
+echo "to=${program_option["to"]} num=${program_option["num"]} port=${program_option["port"]} args=${program_args[*]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "to=480 num=3 port=8080 args=a.txt" ]
+}
+
+@test "parse: error paths still report under set -euo pipefail" {
+	local script
+	script=$(
+		make_script <<'EOF'
+set -euo pipefail
+name "mytool"
+description "does stuff"
+option "--to <r>" "Target"
+option_type "--to" choice "480" "720"
+parse --to 999
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'invalid value for --to: "999"'* ]]
+}
+
+@test "parse: an unknown option reports under set -euo pipefail" {
+	local script
+	script=$(
+		make_script <<'EOF'
+set -euo pipefail
+name "mytool"
+description "does stuff"
+option "--to <r>" "Target"
+parse --tp
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"is not a mytool option"* ]]
+	[[ "$output" == *"--to <r>"* ]]
+}
+
+@test "parse: -- and combined flags survive set -euo pipefail" {
+	local script
+	script=$(
+		make_script <<'EOF'
+set -euo pipefail
+name "mytool"
+description "does stuff"
+option "-a, --all" "All"
+option "-n, --num <x>" "Num"
+parse -an3 -- -weird.txt
+echo "all=${program_option["all"]} num=${program_option["num"]} args=${program_args[*]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "all=true num=3 args=-weird.txt" ]
+}
+
+@test "parse: a bare script survives set -euo pipefail" {
+	local script
+	script=$(
+		make_script <<'EOF'
+set -euo pipefail
+name "bare"
+parse
+echo "ok"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "ok" ]
+}
+
+@test "parse: a value flag with nothing after it survives set -euo pipefail" {
+	local script
+	script=$(
+		make_script <<'EOF'
+set -euo pipefail
+name "mytool"
+description "does stuff"
+option "-n, --num <x>" "Num"
+parse --num
+echo "num=[${program_option["num"]}]"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "num=[]" ]
+}
+
 @test "option: declaring an option survives set -e" {
 	local script
 	script=$(
