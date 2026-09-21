@@ -2360,6 +2360,181 @@ EOF
 	[ "$output" = "ok" ]
 }
 
+# ── option_repeatable ─────────────────────────
+
+@test "option_repeatable: collects every value in order" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--item <v>" "Item"
+option_repeatable "--item"
+parse --item a --item b --item c
+mapfile -t items < <(option_values "--item")
+echo "count=${#items[@]} items=${items[*]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "count=3 items=a b c" ]
+}
+
+@test "option_repeatable: a single occurrence yields one value" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--item <v>" "Item"
+option_repeatable "--item"
+parse --item a
+mapfile -t items < <(option_values "--item")
+echo "count=${#items[@]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "count=1" ]
+}
+
+@test "option_repeatable: no occurrence yields nothing" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--item <v>" "Item"
+option_repeatable "--item"
+parse
+mapfile -t items < <(option_values "--item")
+echo "count=${#items[@]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "count=0" ]
+}
+
+@test "option_repeatable: program_option still holds the last value" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--item <v>" "Item"
+option_repeatable "--item"
+parse --item a --item b
+echo "last=${program_option["item"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "last=b" ]
+}
+
+@test "option_repeatable: collects through an alias and the inline form" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-i, --item <v>" "Item"
+option_repeatable "-i"
+parse -i a --item=b
+mapfile -t items < <(option_values "--item")
+echo "items=${items[*]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "items=a b" ]
+}
+
+@test "option_repeatable: a value containing spaces stays one value" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--item <v>" "Item"
+option_repeatable "--item"
+parse --item "two words" --item z
+mapfile -t items < <(option_values "--item")
+echo "count=${#items[@]} first=${items[0]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "count=2 first=two words" ]
+}
+
+@test "option_repeatable: every value is type-checked, not just the last" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--tag <t>" "Tag"
+option_repeatable "--tag"
+option_type "--tag" choice "a" "b"
+parse --tag a --tag zzz
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'invalid value for --tag: "zzz"'* ]]
+}
+
+@test "option_repeatable: marks the option as (repeatable) in usage" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--item <v>" "Item"
+option_repeatable "--item"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"Item (repeatable)"* ]]
+}
+
+@test "option_repeatable: a flag no option owns is rejected" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--item <v>" "Item"
+option_repeatable "--nope"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"has not been declared"* ]]
+}
+
+@test "option_repeatable: declaring it twice is rejected" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--item <v>" "Item"
+option_repeatable "--item"
+option_repeatable "--item"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"already declared"* ]]
+}
+
 # ── usage layout ──────────────────────────────
 
 @test "usage: a long flag does not push its description out of line" {

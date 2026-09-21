@@ -20,6 +20,8 @@ declare -A program_option_choices
 declare -A program_option_flag
 declare -A program_option_env
 declare -A program_option_validator
+declare -A program_option_repeatable
+declare -A program_option_values # option_name → every value given, one per line
 # Built-in flags are pre-registered so a script that declares one of them gets the
 # same redeclaration error as any other collision, instead of being shadowed.
 declare -A program_option_declared=(
@@ -373,6 +375,97 @@ option_validator() {
 	program_option_validator["$option_name"]="$2"
 }
 
+# Declares an option as repeatable: every occurrence is collected instead of the
+# last one winning. Must be called after the corresponding option declaration and
+# before parse(). Any flag of the option may be given.
+#
+# $program_option["name"] still holds the last value, so nothing that ignores the
+# repetition changes. The collected values are read with option_values().
+#
+# Usage: option_repeatable "<flag>"
+#
+# Example:
+#   option "--item <value>" "An item"
+#   option_repeatable "--item"
+#   ...
+#   mapfile -t items < <(option_values "--item")
+option_repeatable() {
+	local option_name
+	option_name=$(program::resolve_option_name "$1")
+	if [ -z "${program_option["$option_name"]+declared}" ]; then
+		program::die "option_repeatable \"$1\" refers to an option that has not been declared"
+	fi
+	if [ -n "${program_option_repeatable["$option_name"]+declared}" ]; then
+		program::die "option_repeatable \"$1\" is already declared for \"${program_option_flag["$option_name"]:---$option_name}\""
+	fi
+	program_option_repeatable["$option_name"]=true
+}
+
+# Prints every value given for a repeatable option, one per line, in the order
+# they were passed. Prints nothing when the flag was never used. Call after parse().
+#
+# A value containing a newline cannot be represented; see the delimiter note in
+# the README's known limitations.
+#
+# Usage: option_values "<flag>"
+#
+# Example:
+#   mapfile -t items < <(option_values "--item")
+option_values() {
+	local option_name
+	option_name=$(program::resolve_option_name "$1")
+	printf '%s' "${program_option_values["$option_name"]:-}"
+}
+
+# Checks one value against an option's declared type, and stops on a bad one.
+# Split out of parse() so a repeatable option can be checked value by value.
+program::check_option_type() {
+	local _opt_name="$1" _opt_flag="$2" _value="$3"
+	if [ -z "$_value" ]; then
+		# A choice flag that was actually passed must carry one of its choices.
+		# An option the caller never used stays unvalidated — there is no
+		# concept of a required option.
+		if [ "${program_option_passed["$_opt_name"]:-}" = true ] &&
+			[ "${program_option_type["$_opt_name"]:-}" = choice ]; then
+			local _missing_choices _choices_list
+			_choices_list="${program_option_choices["$_opt_name"]:-}"
+			_missing_choices="${_choices_list// /, }"
+			program::fail "$_opt_flag requires one of: $_missing_choices"
+		fi
+		return 0
+	fi
+	case "${program_option_type["$_opt_name"]:-}" in
+	choice)
+		local _choices="${program_option_choices["$_opt_name"]:-}"
+		local _valid=false _choice
+		for _choice in $_choices; do
+			if [ "$_value" = "$_choice" ]; then
+				_valid=true
+				break
+			fi
+		done
+		if [ "$_valid" = false ]; then
+			program::fail "invalid value for $_opt_flag: \"$_value\". Valid choices: ${_choices// /, }"
+		fi
+		;;
+	integer)
+		if [[ ! "$_value" =~ ^-?[0-9]+$ ]]; then
+			program::fail "$_opt_flag expects an integer, got \"$_value\""
+		fi
+		;;
+	path) ;;
+	between)
+		local _min _max
+		_min=$(echo "${program_option_choices["$_opt_name"]:-}" | cut -d' ' -f1)
+		_max=$(echo "${program_option_choices["$_opt_name"]:-}" | cut -d' ' -f2)
+		if ! [[ "$_value" =~ ^-?[0-9]*\.?[0-9]+$ ]] ||
+			! awk "BEGIN { exit !($_value >= $_min && $_value <= $_max) }"; then
+			program::fail "$_opt_flag must be a number between $_min and $_max, got \"$_value\""
+		fi
+		;;
+	esac
+}
+
 # Declares a required option. Stands in for option() — it takes the same flags and
 # description, registers the option identically, and additionally marks it required.
 # parse() prints an error and exits 1 when the flag is absent, the same way an
@@ -614,6 +707,9 @@ program::usage() {
 			if [ -n "${program_option_env["$option_name"]:-}" ]; then
 				suffix="$suffix (env: ${program_option_env["$option_name"]:-})"
 			fi
+			if [ -n "${program_option_repeatable["$option_name"]:-}" ]; then
+				suffix="$suffix (repeatable)"
+			fi
 			if [ -n "${program_option_required["$option_name"]:-}" ]; then
 				suffix="$suffix (required)"
 			fi
@@ -776,6 +872,9 @@ parse() {
 					continue
 				fi
 
+				if [ "${program_option_repeatable["$option_name"]:-}" = true ]; then
+					program_option_values["$option_name"]+="$value"$'\n'
+				fi
 				program::store_option_value "$option_name" "$value" true
 				matched=true
 			done
@@ -860,53 +959,17 @@ parse() {
 
 	# Validate option types
 	for _opt_name in "${!program_option_type[@]}"; do
-		local _value="${program_option["$_opt_name"]:-}"
 		local _opt_flag="${program_option_flag["$_opt_name"]:---$_opt_name}"
-		if [ -z "$_value" ]; then
-			# A choice flag that was actually passed must carry one of its choices.
-			# An option the caller never used stays unvalidated — there is no
-			# concept of a required option.
-			if [ "${program_option_passed["$_opt_name"]:-}" = true ] &&
-				[ "${program_option_type["$_opt_name"]:-}" = choice ]; then
-				local _missing_choices _choices_list
-				_choices_list="${program_option_choices["$_opt_name"]:-}"
-				_missing_choices="${_choices_list// /, }"
-				program::fail "$_opt_flag requires one of: $_missing_choices"
-			fi
+		if [ "${program_option_repeatable["$_opt_name"]:-}" = true ] &&
+			[ -n "${program_option_values["$_opt_name"]:-}" ]; then
+			# Every occurrence is checked, not only the one that landed last
+			local _each
+			while IFS= read -r _each; do
+				program::check_option_type "$_opt_name" "$_opt_flag" "$_each"
+			done <<<"${program_option_values["$_opt_name"]%$'\n'}"
 			continue
 		fi
-		case "${program_option_type["$_opt_name"]:-}" in
-		choice)
-			local _choices="${program_option_choices["$_opt_name"]:-}"
-			local _valid=false
-			for _choice in $_choices; do
-				if [ "$_value" = "$_choice" ]; then
-					_valid=true
-					break
-				fi
-			done
-			if [ "$_valid" = false ]; then
-				local _choices_display
-				_choices_display="${_choices// /, }"
-				program::fail "invalid value for $_opt_flag: \"$_value\". Valid choices: $_choices_display"
-			fi
-			;;
-		integer)
-			if [[ ! "$_value" =~ ^-?[0-9]+$ ]]; then
-				program::fail "$_opt_flag expects an integer, got \"$_value\""
-			fi
-			;;
-		path) ;;
-		between)
-			local _min _max
-			_min=$(echo "${program_option_choices["$_opt_name"]:-}" | cut -d' ' -f1)
-			_max=$(echo "${program_option_choices["$_opt_name"]:-}" | cut -d' ' -f2)
-			if ! [[ "$_value" =~ ^-?[0-9]*\.?[0-9]+$ ]] ||
-				! awk "BEGIN { exit !($_value >= $_min && $_value <= $_max) }"; then
-				program::fail "$_opt_flag must be a number between $_min and $_max, got \"$_value\""
-			fi
-			;;
-		esac
+		program::check_option_type "$_opt_name" "$_opt_flag" "${program_option["$_opt_name"]:-}"
 	done
 
 	# Custom validators, after the built-in type checks so both apply

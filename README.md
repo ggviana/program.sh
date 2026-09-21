@@ -309,6 +309,43 @@ Naming a function that does not exist at `parse` time exits 1 with a specific me
 
 ---
 
+### `option_repeatable "<flag>"` and `option_values "<flag>"`
+
+Declares an option as repeatable: every occurrence is collected instead of the last one winning. `option_repeatable` must be called after the corresponding `option` declaration and before `parse`; `option_values` is called after `parse` and prints the collected values one per line.
+
+| Parameter | Meaning |
+|-----------|---------|
+| `flag`    | Any flag of the option — aliases resolve to the canonical option name |
+
+`program_option["<name>"]` still holds the **last** value, so a script that ignores the repetition behaves exactly as before. The collected values come out through `option_values`, which pairs with `mapfile`:
+
+```bash
+option "-i, --item <value>" "An item"
+option_repeatable "--item"
+parse "$@"
+
+mapfile -t items < <(option_values "--item")
+# script -i a --item=b --item "two words"
+# → items=(a b "two words"), program_option["item"]="two words"
+```
+
+Each occurrence is validated separately, so `option_type` rejects a bad value wherever it appears — not only in the one that landed last:
+
+```bash
+option_type "--tag" choice "a" "b"
+# script --tag a --tag zzz
+# → Error: invalid value for --tag: "zzz". Valid choices: a, b
+```
+
+It also annotates the usage output:
+```
+  -i, --item <value>     An item (repeatable)
+```
+
+Values are stored one per line, so a value containing a newline cannot be represented — the same class of limit as the `:`/`;` delimiters in `program_options`.
+
+---
+
 ### `required_option "<flags>" "<description>"`
 
 Declares a required option. Stands in for `option` rather than accompanying it — same flags string, same description, and the option is registered identically, with the addition that `parse` prints an error and exits 1 when the flag is absent. That is the same failure shape as an unsatisfied `option_type`, and as with the other `parse` validations, `--help` and `--generate-completions` still work.
@@ -674,4 +711,5 @@ brew install shellcheck shfmt
 
 - **Single positional argument declaration only.** `argument` overwrites the previous declaration if called more than once. Multiple positional values are still collected in `program_args` and `program_arg` as long as they are named in the single `argument` declaration (e.g. `argument "<key> <file>" …`).
 - **Option names must not contain colons or semicolons.** These characters are used as internal delimiters in `program_options`.
+- **A repeatable option's values must not contain newlines.** `option_values` returns them one per line.
 - **`depends_of` actually executes the given command.** Stick to invocations with no side effects (e.g. `--version`, `-v`) — not something that starts a server, opens a REPL, or otherwise does real work.
