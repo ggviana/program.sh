@@ -30,9 +30,6 @@ jobs:
 
   fmt-lint:
     runs-on: ubuntu-latest
-    # Raised above the workflow default because this job pushes the formatting commit
-    permissions:
-      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -51,16 +48,10 @@ jobs:
           chmod +x /usr/local/bin/shfmt
           shfmt --version
 
-      - name: Format
-        run: make fmt
-
-      - name: Commit formatting changes
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git diff --quiet && exit 0
-          git commit -am "style: apply shfmt formatting"
-          git push
+      # Reports unformatted files and fails; run "make fmt" locally to fix them.
+      # CI does not reformat the tree itself — a push should not rewrite main.
+      - name: Format check
+        run: make fmt-check
 
       - name: Lint
         run: make lint
