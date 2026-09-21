@@ -2360,6 +2360,80 @@ EOF
 	[ "$output" = "ok" ]
 }
 
+# ── usage layout ──────────────────────────────
+
+@test "usage: a long flag does not push its description out of line" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--a-rather-long-flag-name <value>" "Does a thing"
+option "-s" "Short"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	local wide short
+	wide=$(printf "  %-33s %s" "--a-rather-long-flag-name <value>" "Does a thing")
+	short=$(printf "  %-33s %s" "-s" "Short")
+	[[ "$output" == *"$wide"* ]]
+	[[ "$output" == *"$short"* ]]
+}
+
+@test "usage: the built-in lines align with a long flag too" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--a-rather-long-flag-name <value>" "Does a thing"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	local builtin
+	builtin=$(printf "  %-33s %s" "--help, -h" "Show this help message")
+	[[ "$output" == *"$builtin"* ]]
+}
+
+@test "usage: a short-flag script keeps a stable minimum width" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-s" "Short"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	local expected
+	expected=$(printf "  %-22s %s" "-s" "Short")
+	[[ "$output" == *"$expected"* ]]
+}
+
+@test "usage: the arguments block shares the option column" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+argument "<file>" "File to read"
+option "--a-rather-long-flag-name <value>" "Does a thing"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	local expected
+	expected=$(printf "  %-33s %s" "<file>" "File to read")
+	[[ "$output" == *"$expected"* ]]
+}
+
 # ── declaring against an unknown option ───────
 
 @test "option_type: a flag no option owns is rejected" {
@@ -2726,8 +2800,9 @@ option "--to <r>" "   Target resolution   "
 parse --help
 EOF
 	)
+	# Width is the widest left-hand entry, which here is --generate-completions
 	local expected
-	expected=$(printf "  %-20s %s" "--to <r>" "Target resolution")
+	expected=$(printf "  %-22s %s" "--to <r>" "Target resolution")
 	run "$script"
 	[ "$status" -eq 0 ]
 	[[ "$output" == *"$expected"* ]]

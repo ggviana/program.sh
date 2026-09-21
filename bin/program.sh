@@ -570,10 +570,26 @@ program::usage() {
 	# Prints description
 	echo -e "\n$program_description"
 
+	# Column width: the widest entry in the left-hand column, so a long flag pushes
+	# the whole block over instead of pushing its own description out of line. Never
+	# narrower than 20, which is what a script with only short flags used to get.
+	local width=20 entry
+	for entry in "$program_args_name" "--help, -h" "--version" "--generate-completions"; do
+		[ "${#entry}" -gt "$width" ] && width="${#entry}"
+	done
+	if [ "$program_has_options" = true ]; then
+		local _w_options _w_option _w_flags
+		IFS=';' read -ra _w_options <<<"$program_options"
+		for _w_option in "${_w_options[@]}"; do
+			IFS=':' read -r _ _w_flags _ _ <<<"$_w_option"
+			[ "${#_w_flags}" -gt "$width" ] && width="${#_w_flags}"
+		done
+	fi
+
 	# Prints arguments
 	if [ "$program_has_args" = true ]; then
 		echo -e "\nArguments:"
-		printf "  %-20s %s\n" "$program_args_name" "$program_args_description"
+		printf "  %-${width}s %s\n" "$program_args_name" "$program_args_description"
 	fi
 
 	# Prints options
@@ -601,12 +617,12 @@ program::usage() {
 			if [ -n "${program_option_required["$option_name"]:-}" ]; then
 				suffix="$suffix (required)"
 			fi
-			printf "  %-20s %s%s\n" "$option_flags" "$option_description" "$suffix"
+			printf "  %-${width}s %s%s\n" "$option_flags" "$option_description" "$suffix"
 		done
 	fi
-	printf "  %-20s %s\n" "--help, -h" "Show this help message"
-	printf "  %-20s %s\n" "--version" "Show the version"
-	printf "  %-20s %s\n" "--generate-completions" "Output a bash completion script"
+	printf "  %-${width}s %s\n" "--help, -h" "Show this help message"
+	printf "  %-${width}s %s\n" "--version" "Show the version"
+	printf "  %-${width}s %s\n" "--generate-completions" "Output a bash completion script"
 }
 
 # Parses the script's arguments. Must be called after all option() and argument() declarations.
