@@ -5,11 +5,34 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install bats
+        env:
+          # Pinned rather than taken from the runner image, whose bats version
+          # moves with the image: BATS_TEST_TMPDIR, which the suite relies on,
+          # only exists from 1.4 onwards.
+          BATS_VERSION: v1.13.0
+        run: |
+          git clone --depth 1 --branch "$BATS_VERSION" https://github.com/bats-core/bats-core.git /tmp/bats-core
+          sudo /tmp/bats-core/install.sh /usr/local
+          bats --version
+
+      - name: Test
+        run: make test
+
   fmt-lint:
     runs-on: ubuntu-latest
+    # Raised above the workflow default because this job pushes the formatting commit
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
