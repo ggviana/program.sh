@@ -2360,6 +2360,107 @@ EOF
 	[ "$output" = "ok" ]
 }
 
+# ── declaring against an unknown option ───────
+
+@test "option_type: a flag no option owns is rejected" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--to <r>" "Target"
+option_type "--nope" integer
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'option_type "--nope" refers to an option that has not been declared'* ]]
+}
+
+@test "option_env: a flag no option owns is rejected" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--to <r>" "Target"
+option_env "--nope" "VAR"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'option_env "--nope" refers to an option'* ]]
+}
+
+@test "option_validator: a flag no option owns is rejected" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--to <r>" "Target"
+keep() { echo "$1"; }
+option_validator "--nope" keep
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *'option_validator "--nope" refers to an option'* ]]
+}
+
+@test "option_type: declaring before the option is rejected" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option_type "--to" integer
+option "--to <r>" "Target"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"has not been declared"* ]]
+}
+
+@test "option_type: a short alias of a declared option is accepted" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-t, --to <r>" "Target"
+option_type "-t" integer
+parse --to 3
+echo "to=${program_option["to"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "to=3" ]
+}
+
+@test "option_type: a --no-* flag is accepted" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "--no-cheese <k>" "Cheese"
+option_type "--no-cheese" choice "brie"
+parse --no-cheese brie
+echo "cheese=${program_option["cheese"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "cheese=brie" ]
+}
+
 # ── option_type redeclaration ─────────────────
 
 @test "option_type: declaring a type twice for one option errors" {

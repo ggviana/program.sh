@@ -309,6 +309,9 @@ option_type() {
 	shift 2
 	local option_name
 	option_name=$(program::resolve_option_name "$flag")
+	if [ -z "${program_option["$option_name"]+declared}" ]; then
+		program::die "option_type \"$flag\" refers to an option that has not been declared"
+	fi
 	if [ -n "${program_option_type["$option_name"]+declared}" ]; then
 		program::die "option_type \"$flag\" redeclares the type of \"${program_option_flag["$option_name"]:---$option_name}\", already declared as \"${program_option_type["$option_name"]:-}\""
 	fi
@@ -333,6 +336,9 @@ option_type() {
 option_env() {
 	local option_name
 	option_name=$(program::resolve_option_name "$1")
+	if [ -z "${program_option["$option_name"]+declared}" ]; then
+		program::die "option_env \"$1\" refers to an option that has not been declared"
+	fi
 	if [ -n "${program_option_env["$option_name"]+declared}" ]; then
 		program::die "option_env \"$1\" redeclares the variable of \"${program_option_flag["$option_name"]:---$option_name}\", already declared as \"${program_option_env["$option_name"]:-}\""
 	fi
@@ -358,6 +364,9 @@ option_env() {
 option_validator() {
 	local option_name
 	option_name=$(program::resolve_option_name "$1")
+	if [ -z "${program_option["$option_name"]+declared}" ]; then
+		program::die "option_validator \"$1\" refers to an option that has not been declared"
+	fi
 	if [ -n "${program_option_validator["$option_name"]+declared}" ]; then
 		program::die "option_validator \"$1\" redeclares the validator of \"${program_option_flag["$option_name"]:---$option_name}\""
 	fi
