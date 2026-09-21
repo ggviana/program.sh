@@ -21,6 +21,7 @@ declare -A program_option_flag
 declare -A program_option_env
 declare -A program_option_validator
 declare -A program_option_repeatable
+declare -A program_option_counting
 declare -A program_option_values # option_name → every value given, one per line
 # Built-in flags are pre-registered so a script that declares one of them gets the
 # same redeclaration error as any other collision, instead of being shadowed.
@@ -401,6 +402,33 @@ option_repeatable() {
 	program_option_repeatable["$option_name"]=true
 }
 
+# Declares a boolean option as counting: each occurrence increments it instead of
+# storing "true", so -vvv reads as 3. Must be called after the corresponding option
+# declaration and before parse(). Any flag of the option may be given.
+#
+# The option reads 0 when the flag is absent, so the value is always a number.
+# Declaring it for a value-accepting option is an error — there is nothing to
+# count when each occurrence carries its own value.
+#
+# Usage: option_count "<flag>"
+#
+# Example:
+#   option "-v, --verbose" "Increase verbosity"
+#   option_count "--verbose"
+#   ...
+#   [ "${program_option["verbose"]}" -ge 2 ] && set -x
+option_count() {
+	local option_name
+	option_name=$(program::resolve_option_name "$1")
+	if [ -z "${program_option["$option_name"]+declared}" ]; then
+		program::die "option_count \"$1\" refers to an option that has not been declared"
+	fi
+	if [ -n "${program_option_counting["$option_name"]+declared}" ]; then
+		program::die "option_count \"$1\" is already declared for \"${program_option_flag["$option_name"]:---$option_name}\""
+	fi
+	program_option_counting["$option_name"]=true
+}
+
 # Prints every value given for a repeatable option, one per line, in the order
 # they were passed. Prints nothing when the flag was never used. Call after parse().
 #
@@ -710,6 +738,9 @@ program::usage() {
 			if [ -n "${program_option_repeatable["$option_name"]:-}" ]; then
 				suffix="$suffix (repeatable)"
 			fi
+			if [ -n "${program_option_counting["$option_name"]:-}" ]; then
+				suffix="$suffix (counting)"
+			fi
 			if [ -n "${program_option_required["$option_name"]:-}" ]; then
 				suffix="$suffix (required)"
 			fi
@@ -781,6 +812,17 @@ parse() {
 			alias="${alias#-}"
 			option_aliases["$option_name"]+="$alias "
 		done
+	done
+
+	# A counting option is a number before anything is parsed, so a script can read
+	# it without a fallback. Declaring one for a value flag makes no sense: each
+	# occurrence would carry its own value, leaving nothing to count.
+	local _count_name
+	for _count_name in "${!program_option_counting[@]}"; do
+		if [ "${program_flag_has_arg["${program_option_flag["$_count_name"]:-}"]:-false}" = true ]; then
+			program::die "option_count \"${program_option_flag["$_count_name"]:---$_count_name}\" is not a boolean flag"
+		fi
+		program::store_option_value "$_count_name" 0
 	done
 
 	while [[ $# -gt 0 ]]; do
@@ -874,6 +916,9 @@ parse() {
 
 				if [ "${program_option_repeatable["$option_name"]:-}" = true ]; then
 					program_option_values["$option_name"]+="$value"$'\n'
+				fi
+				if [ "${program_option_counting["$option_name"]:-}" = true ]; then
+					value=$((${program_option["$option_name"]:-0} + 1))
 				fi
 				program::store_option_value "$option_name" "$value" true
 				matched=true

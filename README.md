@@ -346,6 +346,38 @@ Values are stored one per line, so a value containing a newline cannot be repres
 
 ---
 
+### `option_count "<flag>"`
+
+Declares a boolean option as counting: each occurrence increments it instead of storing `true`, so `-vvv` reads as `3`. Must be called after the corresponding `option` declaration and before `parse`.
+
+| Parameter | Meaning |
+|-----------|---------|
+| `flag`    | Any flag of the option — aliases resolve to the canonical option name |
+
+The option reads `0` when the flag is absent, so the value is always a number and needs no fallback at the call site.
+
+```bash
+option "-v, --verbose" "Increase verbosity"
+option_count "--verbose"
+parse "$@"
+
+[ "${program_option["verbose"]}" -ge 2 ] && set -x
+
+# script          → 0
+# script -v       → 1
+# script -vvv     → 3
+# script -v -v    → 2
+```
+
+Declaring it for a value-accepting option exits 1: each occurrence would carry its own value, leaving nothing to count — use [`option_repeatable`](#option_repeatable-flag-and-option_values-flag) for that.
+
+It also annotates the usage output:
+```
+  -v, --verbose          Increase verbosity (counting)
+```
+
+---
+
 ### `required_option "<flags>" "<description>"`
 
 Declares a required option. Stands in for `option` rather than accompanying it — same flags string, same description, and the option is registered identically, with the addition that `parse` prints an error and exits 1 when the flag is absent. That is the same failure shape as an unsatisfied `option_type`, and as with the other `parse` validations, `--help` and `--generate-completions` still work.

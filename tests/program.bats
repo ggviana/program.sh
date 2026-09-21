@@ -2535,6 +2535,142 @@ EOF
 	[[ "$output" == *"already declared"* ]]
 }
 
+# ── option_count ──────────────────────────────
+
+@test "option_count: an absent flag reads 0" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-v, --verbose" "Verbose"
+option_count "--verbose"
+parse
+echo "verbose=${program_option["verbose"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "verbose=0" ]
+}
+
+@test "option_count: -vvv counts to three" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-v, --verbose" "Verbose"
+option_count "--verbose"
+parse -vvv
+echo "verbose=${program_option["verbose"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "verbose=3" ]
+}
+
+@test "option_count: separate occurrences accumulate" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-v, --verbose" "Verbose"
+option_count "--verbose"
+parse -v --verbose -v
+echo "verbose=${program_option["verbose"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "verbose=3" ]
+}
+
+@test "option_count: the count reaches every alias" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-v, --verbose" "Verbose"
+option_count "-v"
+parse -vv
+echo "verbose=${program_option["verbose"]} v=${program_option["v"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "verbose=2 v=2" ]
+}
+
+@test "option_count: counts inside a combined group" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-v, --verbose" "Verbose"
+option "-q, --quiet" "Quiet"
+option_count "--verbose"
+parse -qvv
+echo "verbose=${program_option["verbose"]} quiet=${program_option["quiet"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "verbose=2 quiet=true" ]
+}
+
+@test "option_count: a value-accepting flag is rejected" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-n, --num <v>" "Num"
+option_count "--num"
+parse
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"is not a boolean flag"* ]]
+}
+
+@test "option_count: marks the option as (counting) in usage" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-v, --verbose" "Verbose"
+option_count "--verbose"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"Verbose (counting)"* ]]
+}
+
+@test "option_count: a flag no option owns is rejected" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-v, --verbose" "Verbose"
+option_count "--nope"
+parse --help
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"has not been declared"* ]]
+}
+
 # ── usage layout ──────────────────────────────
 
 @test "usage: a long flag does not push its description out of line" {
