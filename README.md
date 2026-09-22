@@ -581,7 +581,7 @@ Parses the script's arguments. Must be called after all `option` and `argument` 
 - A bare `--` ends option parsing. It is consumed, and every token after it becomes a positional argument verbatim — no flag matching, no short-flag expansion, no unknown-option check. A second `--` is an ordinary argument.
 - Combined short flags are expanded before matching, so `-abc` is `-a -b -c`. A value-accepting flag in the group takes the rest of the token (`-n5`), or the next argument when the token ends (`-an 5`). Expansion is only attempted when the leading character is a declared short flag and the whole token is not itself one, so forwarded tokens like `ls -la` and negative numbers are left alone.
 - A flag declared with `[value]` takes an *optional* value: it consumes the next token only when that token is data, and stores `true` when the flag is passed bare or followed by another flag. Because it cannot tell an intended value from the next positional argument, declare such flags so they are not followed by positionals — `--cheese pizza.txt` stores `pizza.txt` as the cheese.
-- Value-accepting flags also accept the inline form `--flag=value` (split on the first `=`, so `--set=a=b` yields `a=b`). Boolean flags do not: `--rm=x` exits 1 with `option --rm does not take a value`.
+- Value-accepting flags also accept the inline form `--flag=value` (split on the first `=`, so `--set=a=b` yields `a=b`). Short flags spell it the same way: `-n=5` is `--num=5`, and `-n==5` yields `=5`. Boolean flags take no value in either spelling: `--rm=x` and `-r=x` both exit 1 with `option … does not take a value`.
 - Unrecognised tokens are collected as positional args into `program_args` (indexed) and `program_arg` (named, if `argument` was declared).
 - An unrecognised token that looks like a flag exits 1, unless `allow_unknown_options` was called. A lone `-` and negative numbers (`-5`, `-3.14`) stay positional.
 - The error follows git's shape: it names the program, points at `--help`, and lists the nearest declared flags — built-ins included — with their value placeholders. Every flag at the winning edit distance is listed, so the heading is singular or plural to match:
@@ -714,7 +714,7 @@ The `flags` parameter of `option` accepts one or more flag tokens in a single st
 | Short, value-accepting | `-f <value>` |
 | Optional value | `--flag [value]` |
 | Combined short flags | `-abc` — the same as `-a -b -c` |
-| Short flag with attached value | `-n5` — the same as `-n 5` |
+| Short flag with attached value | `-n5` or `-n=5` — the same as `-n 5` |
 | Long, value-accepting | `--flag <value>` |
 | Both, value-accepting | `-f, --flag <value>` |
 | Negation (boolean off) | `--no-<feature>` |

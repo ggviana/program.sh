@@ -880,9 +880,16 @@ parse() {
 				while [ -n "$_group" ]; do
 					_short="-${_group:0:1}"
 					_group="${_group:1}"
+					# An "=" here followed a boolean flag: -v=x, the short spelling of
+					# --verbose=x, which is reported the same way.
+					if [ "$_short" = "-=" ]; then
+						program::fail "option ${_expanded[-1]} does not take a value"
+					fi
 					_expanded+=("$_short")
 					if [ "${program_flag_has_arg["$_short"]:-false}" = true ] && [ -n "$_group" ]; then
-						_expanded+=("$_group")
+						# -n=5 is the short spelling of --num=5, so the "=" is a separator
+						# and not part of the value. A literal leading = needs -n==5.
+						_expanded+=("${_group#=}")
 						_group=""
 					fi
 				done

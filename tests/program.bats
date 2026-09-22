@@ -1647,6 +1647,104 @@ EOF
 	[[ "$output" == *"redeclares the validator"* ]]
 }
 
+# ── = inside a short flag group ───────────────
+
+@test "parse: -v=x is reported like --verbose=x" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-v, --verbose" "Verbose"
+parse -v=x
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"option -v does not take a value"* ]]
+}
+
+@test "parse: -n=5 means the same as --num=5" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-n, --num <x>" "Num"
+parse -n=5
+echo "num=${program_option["num"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "num=5" ]
+}
+
+@test "parse: -n==5 keeps the literal = like --num==5" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-n, --num <x>" "Num"
+parse -n==5
+echo "num=${program_option["num"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "num==5" ]
+}
+
+@test "parse: = works on a value flag inside a group" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-v, --verbose" "Verbose"
+option "-n, --num <x>" "Num"
+parse -vn=5
+echo "verbose=${program_option["verbose"]} num=${program_option["num"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "verbose=true num=5" ]
+}
+
+@test "parse: a boolean deeper in a group still reports itself" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-a, --all" "All"
+option "-v, --verbose" "Verbose"
+parse -av=x
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"option -v does not take a value"* ]]
+}
+
+@test "parse: -n5 is unaffected" {
+	local script
+	script=$(
+		make_script <<'EOF'
+name "mytool"
+description "does stuff"
+option "-n, --num <x>" "Num"
+parse -n5
+echo "num=${program_option["num"]}"
+EOF
+	)
+	run "$script"
+	[ "$status" -eq 0 ]
+	[ "$output" = "num=5" ]
+}
+
 # ── end of options ────────────────────────────
 
 @test "parse: -- stops flags from being interpreted" {
