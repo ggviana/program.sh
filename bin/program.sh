@@ -131,11 +131,11 @@ program::option() {
 	# declaration form the caller used, since required_option() delegates here.
 	local _decl="option"
 	[ "${FUNCNAME[1]:-}" = required_option ] && _decl="required_option"
-	if [ -n "${program_option_declared["$option_name"]+declared}" ]; then
+	if program::has_key program_option_declared "$option_name"; then
 		program::die "$_decl \"$option_flags\" redeclares the option name \"$option_name\", already declared by \"${program_option_declared["$option_name"]:-}\""
 	fi
 	for _flag in "${_flags[@]}"; do
-		if [ -n "${program_option_declared["$_flag"]+declared}" ]; then
+		if program::has_key program_option_declared "$_flag"; then
 			program::die "$_decl \"$option_flags\" redeclares the flag \"$_flag\", already declared by \"${program_option_declared["$_flag"]:-}\""
 		fi
 	done
@@ -173,6 +173,22 @@ program::store_option_value() {
 		[ "$mark_passed" = true ] && program_option_passed["$alias"]=true
 	done
 	return 0
+}
+
+# True when <map> holds an entry for <key>. The map is bound by name rather than
+# built into an indirect "$1[$2]" reference: that form mis-parses a key containing
+# "]", and on an indexed array would evaluate the subscript arithmetically —
+# running any command substitution inside it. Some keys here come straight from
+# the command line, so that distinction matters.
+program::has_key() {
+	local -n _has_key_map="$1"
+	[ -n "${_has_key_map["$2"]+declared}" ]
+}
+
+# The flag an option is reported by: its first long form, or the short one for a
+# short-only option, falling back to --<name> when none was recorded.
+program::flag_of() {
+	printf '%s' "${program_option_flag["$1"]:---$1}"
 }
 
 # Reports a declaration mistake and stops. Declaration errors are the script
@@ -312,11 +328,11 @@ option_type() {
 	shift 2
 	local option_name
 	option_name=$(program::resolve_option_name "$flag")
-	if [ -z "${program_option["$option_name"]+declared}" ]; then
+	if ! program::has_key program_option "$option_name"; then
 		program::die "option_type \"$flag\" refers to an option that has not been declared"
 	fi
-	if [ -n "${program_option_type["$option_name"]+declared}" ]; then
-		program::die "option_type \"$flag\" redeclares the type of \"${program_option_flag["$option_name"]:---$option_name}\", already declared as \"${program_option_type["$option_name"]:-}\""
+	if program::has_key program_option_type "$option_name"; then
+		program::die "option_type \"$flag\" redeclares the type of \"$(program::flag_of "$option_name")\", already declared as \"${program_option_type["$option_name"]:-}\""
 	fi
 	program_option_type["$option_name"]="$type"
 	if [ "$type" = "choice" ] || [ "$type" = "between" ]; then
@@ -339,11 +355,11 @@ option_type() {
 option_env() {
 	local option_name
 	option_name=$(program::resolve_option_name "$1")
-	if [ -z "${program_option["$option_name"]+declared}" ]; then
+	if ! program::has_key program_option "$option_name"; then
 		program::die "option_env \"$1\" refers to an option that has not been declared"
 	fi
-	if [ -n "${program_option_env["$option_name"]+declared}" ]; then
-		program::die "option_env \"$1\" redeclares the variable of \"${program_option_flag["$option_name"]:---$option_name}\", already declared as \"${program_option_env["$option_name"]:-}\""
+	if program::has_key program_option_env "$option_name"; then
+		program::die "option_env \"$1\" redeclares the variable of \"$(program::flag_of "$option_name")\", already declared as \"${program_option_env["$option_name"]:-}\""
 	fi
 	program_option_env["$option_name"]="$2"
 }
@@ -367,11 +383,11 @@ option_env() {
 option_validator() {
 	local option_name
 	option_name=$(program::resolve_option_name "$1")
-	if [ -z "${program_option["$option_name"]+declared}" ]; then
+	if ! program::has_key program_option "$option_name"; then
 		program::die "option_validator \"$1\" refers to an option that has not been declared"
 	fi
-	if [ -n "${program_option_validator["$option_name"]+declared}" ]; then
-		program::die "option_validator \"$1\" redeclares the validator of \"${program_option_flag["$option_name"]:---$option_name}\""
+	if program::has_key program_option_validator "$option_name"; then
+		program::die "option_validator \"$1\" redeclares the validator of \"$(program::flag_of "$option_name")\""
 	fi
 	program_option_validator["$option_name"]="$2"
 }
@@ -393,11 +409,11 @@ option_validator() {
 option_repeatable() {
 	local option_name
 	option_name=$(program::resolve_option_name "$1")
-	if [ -z "${program_option["$option_name"]+declared}" ]; then
+	if ! program::has_key program_option "$option_name"; then
 		program::die "option_repeatable \"$1\" refers to an option that has not been declared"
 	fi
-	if [ -n "${program_option_repeatable["$option_name"]+declared}" ]; then
-		program::die "option_repeatable \"$1\" is already declared for \"${program_option_flag["$option_name"]:---$option_name}\""
+	if program::has_key program_option_repeatable "$option_name"; then
+		program::die "option_repeatable \"$1\" is already declared for \"$(program::flag_of "$option_name")\""
 	fi
 	program_option_repeatable["$option_name"]=true
 }
@@ -420,11 +436,11 @@ option_repeatable() {
 option_count() {
 	local option_name
 	option_name=$(program::resolve_option_name "$1")
-	if [ -z "${program_option["$option_name"]+declared}" ]; then
+	if ! program::has_key program_option "$option_name"; then
 		program::die "option_count \"$1\" refers to an option that has not been declared"
 	fi
-	if [ -n "${program_option_counting["$option_name"]+declared}" ]; then
-		program::die "option_count \"$1\" is already declared for \"${program_option_flag["$option_name"]:---$option_name}\""
+	if program::has_key program_option_counting "$option_name"; then
+		program::die "option_count \"$1\" is already declared for \"$(program::flag_of "$option_name")\""
 	fi
 	program_option_counting["$option_name"]=true
 }
@@ -568,7 +584,7 @@ depends_of() {
 		# Keyed by command name, so "docker" and "docker -v" collide: checking one
 		# command twice is redundant at best and contradictory at worst.
 		dependency_name="${dependency%% *}"
-		if [ -n "${program_dependency_declared["$dependency_name"]+declared}" ]; then
+		if program::has_key program_dependency_declared "$dependency_name"; then
 			program::die "depends_of \"$dependency\" redeclares the dependency \"$dependency_name\", already declared by \"${program_dependency_declared["$dependency_name"]:-}\""
 		fi
 		program_dependency_declared["$dependency_name"]="$dependency"
@@ -820,7 +836,7 @@ parse() {
 	local _count_name
 	for _count_name in "${!program_option_counting[@]}"; do
 		if [ "${program_flag_has_arg["${program_option_flag["$_count_name"]:-}"]:-false}" = true ]; then
-			program::die "option_count \"${program_option_flag["$_count_name"]:---$_count_name}\" is not a boolean flag"
+			program::die "option_count \"$(program::flag_of "$_count_name")\" is not a boolean flag"
 		fi
 		program::store_option_value "$_count_name" 0
 	done
@@ -857,8 +873,8 @@ parse() {
 			# flag and the whole token is not itself one, so tokens a script means to
 			# forward — and negative numbers — are left alone.
 			if [[ "$arg" == -[!-]?* ]] &&
-				[ -z "${program_flag_has_arg["$arg"]+declared}" ] &&
-				[ -n "${program_flag_has_arg["-${arg:1:1}"]+declared}" ]; then
+				! program::has_key program_flag_has_arg "$arg" &&
+				program::has_key program_flag_has_arg "-${arg:1:1}"; then
 				local _group="${arg:1}" _short
 				local -a _expanded=()
 				while [ -n "$_group" ]; do
@@ -927,7 +943,7 @@ parse() {
 				# A token that looks like a flag but matches nothing is a mistake, not a
 				# positional. A lone "-" and negative numbers stay arguments.
 				if [ "$program_allow_unknown_options" = false ] && program::looks_like_flag "$arg"; then
-					if [ -n "$inline_flag" ] && [ -n "${program_flag_has_arg["$inline_flag"]+declared}" ]; then
+					if [ -n "$inline_flag" ] && program::has_key program_flag_has_arg "$inline_flag"; then
 						program::fail "option $inline_flag does not take a value"
 					fi
 
@@ -1004,7 +1020,8 @@ parse() {
 
 	# Validate option types
 	for _opt_name in "${!program_option_type[@]}"; do
-		local _opt_flag="${program_option_flag["$_opt_name"]:---$_opt_name}"
+		local _opt_flag
+		_opt_flag=$(program::flag_of "$_opt_name")
 		if [ "${program_option_repeatable["$_opt_name"]:-}" = true ] &&
 			[ -n "${program_option_values["$_opt_name"]:-}" ]; then
 			# Every occurrence is checked, not only the one that landed last
@@ -1022,7 +1039,7 @@ parse() {
 	for _val_name in "${!program_option_validator[@]}"; do
 		_val_value="${program_option["$_val_name"]:-}"
 		[ -z "$_val_value" ] && continue
-		_val_flag="${program_option_flag["$_val_name"]:---$_val_name}"
+		_val_flag="$(program::flag_of "$_val_name")"
 		_val_fn="${program_option_validator["$_val_name"]:-}"
 		if ! declare -F "$_val_fn" >/dev/null; then
 			program::die "option_validator for $_val_flag names an undefined function \"$_val_fn\""

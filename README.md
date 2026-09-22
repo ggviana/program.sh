@@ -39,6 +39,34 @@ Options:
   --no-cheese           Omit cheese (default: true)
 ```
 
+## Requirements
+
+| Requirement | Why |
+|-------------|-----|
+| **bash 4.3 or newer** | Associative arrays (4.0) throughout, and name references (4.3) in the internal helpers |
+| **GNU `grep`** | `lib/extract.sh` uses `grep -oP`; BSD grep rejects `-P` |
+
+Both rule out a stock macOS, whose `/bin/bash` is 3.2 and whose `grep` is BSD.
+Install newer ones and put them ahead of `/usr/bin` on `PATH`:
+
+```bash
+brew install bash grep
+```
+
+Check what you have:
+
+```bash
+bash --version   # need 4.3+
+grep -oP 'x' <<<'x'   # should print x, not "invalid option -- P"
+```
+
+The bash floor is deliberate: the library is built on associative arrays, which
+3.2 does not have at all, so supporting it would mean a different library. The
+GNU grep dependency is incidental rather than intended, and is tracked for
+removal.
+
+---
+
 ## Installation
 
 **curl** (recommended):
@@ -644,8 +672,8 @@ parse "$@"
 ## Namespacing
 
 Every function the library uses internally is namespaced under `program::` — the
-helpers (`program::trim`, `program::fail`, `program::resolve_option_name`, …) and
-the three functions that are both public API and called from inside `parse`:
+helpers (`program::trim`, `program::fail`, `program::has_key`, …) and the three
+functions that are both public API and called from inside `parse`:
 `program::usage`, `program::option`, `program::generate_completions`.
 
 The public names are unchanged. `usage`, `option` and `generate_completions` are
